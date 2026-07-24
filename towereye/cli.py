@@ -97,6 +97,19 @@ def cmd_capture(args) -> int:
     return 0
 
 
+def cmd_bench(args) -> int:
+    from .bench import run_bench
+
+    correct, total, mismatches = run_bench(args.golden_dir, _build_chain())
+    for line in mismatches:
+        print(f"MISS  {line}")
+    if total == 0:
+        print("no labeled golden frames found (expected names like 17_001.png)")
+        return 1
+    print(f"{correct}/{total} correct ({correct / total:.0%})")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="towereye")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -116,6 +129,10 @@ def main(argv=None) -> int:
     capture.add_argument("--video", help=argparse.SUPPRESS)
     capture.add_argument("--out-dir", default="captures")
     capture.set_defaults(func=cmd_capture)
+
+    bench = sub.add_parser("bench", help="score readers against labeled golden frames")
+    bench.add_argument("golden_dir")
+    bench.set_defaults(func=cmd_bench)
 
     args = parser.parse_args(argv)
     return args.func(args)
