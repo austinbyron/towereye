@@ -19,9 +19,13 @@ SIZE = 256          # working resolution for both templates and queries
 # Accept floor swept on 22 labeled real rolls: answer rate plateaus at 8 and
 # stays wrong-free down to 4 — the MARGIN rule is the binding safety check.
 MIN_INLIERS = 8
-MARGIN = 2.0        # best value must beat the runner-up value by this factor
+# Margin swept on 28 labeled rolls: 1.5 answers 21/28 at 0 wrong. The spread
+# and centrality guards now zero junk scores, so 2.0 was over-refusing (a
+# correct 17 at 11 inliers was blocked by a runner-up at 6).
+MARGIN = 1.5
 RATIO = 0.75        # Lowe's ratio test for candidate matches
 MIN_SPREAD = 0.15   # inliers must span this fraction of the image both ways
+CENTER_TOL = 0.30   # inlier centroid must sit this close to the image center
 
 
 def _spread_ok(points: np.ndarray) -> bool:
@@ -29,6 +33,14 @@ def _spread_ok(points: np.ndarray) -> bool:
     'match' another straight edge with a consistent affine fit."""
     spread = points.max(axis=0) - points.min(axis=0)
     return bool(min(spread) >= MIN_SPREAD * SIZE)
+
+
+def _centered_ok(points: np.ndarray) -> bool:
+    """Reject edge-clustered inlier sets: crops include fragments of the three
+    adjacent faces, and two neighboring faces' crops share real surface, so an
+    edge-heavy match means the wrong (adjacent) face, not the top face."""
+    cx, cy = points.mean(axis=0)
+    return bool(np.hypot(cx - SIZE / 2, cy - SIZE / 2) <= CENTER_TOL * SIZE)
 
 
 class KeypointReader:
@@ -62,8 +74,11 @@ class KeypointReader:
         _, mask = cv2.estimateAffinePartial2D(src, dst, ransacReprojThreshold=4.0)
         if mask is None:
             return 0
-        inliers = src[mask.ravel().astype(bool)]
-        if len(inliers) < 4 or not _spread_ok(inliers):
+        keep = mask.ravel().astype(bool)
+        query_inliers, tmpl_inliers = src[keep], dst[keep]
+        if len(query_inliers) < 4 or not _spread_ok(query_inliers):
+            return 0
+        if not (_centered_ok(query_inliers) and _centered_ok(tmpl_inliers)):
             return 0
         return int(mask.sum())
 

@@ -50,6 +50,15 @@ def test_spread_guard_rejects_collinear_inliers():
     assert _spread_ok(scattered)
 
 
+def test_center_guard_rejects_edge_clustered_inliers():
+    from towereye.keypoints import _centered_ok
+
+    corner = np.float32([[10, 10], [60, 20], [20, 60], [50, 50]])
+    central = np.float32([[100, 100], [160, 110], [110, 160], [150, 150]])
+    assert not _centered_ok(corner)
+    assert _centered_ok(central)
+
+
 def test_save_template_crops_and_numbers_files(tmp_path):
     frame = np.zeros((200, 200, 3), dtype=np.uint8)
     frame[60:140, 60:140] = (255, 120, 100)
