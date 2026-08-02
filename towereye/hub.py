@@ -81,3 +81,42 @@ class Hub:
             self._loop.call_soon_threadsafe(self._stop_event.set)
         if self._thread is not None:
             self._thread.join(timeout=2)
+
+
+def demo_events() -> list[dict]:
+    return [
+        {"type": "armed", "label": "Initiative", "die": "d20"},
+        {"type": "result", "roll_id": "demo-000", "value": 17,
+         "confidence": 0.95, "reader": "keypoints"},
+        {"type": "armed", "label": "Wisdom Save", "die": "d20"},
+        {"type": "unread", "roll_id": "demo-001"},
+        {"type": "result", "roll_id": "demo-002", "value": 20,
+         "confidence": 0.9, "reader": "haiku"},
+    ]
+
+
+def _demo_main() -> None:
+    import argparse
+    import itertools
+    import time
+
+    parser = argparse.ArgumentParser(prog="towereye.hub")
+    parser.add_argument("--demo", action="store_true")
+    parser.add_argument("--port", type=int, default=8777)
+    parser.add_argument("--interval", type=float, default=3.0)
+    args = parser.parse_args()
+    hub = Hub(port=args.port)
+    hub.on_confirm = lambda roll_id, value: print(f"confirm: {roll_id} -> {value}")
+    hub.start_in_thread()
+    print(f"Demo hub on ws://127.0.0.1:{hub.port} (Ctrl-C to stop)")
+    try:
+        for event in itertools.cycle(demo_events()):
+            print("sending", event)
+            hub.broadcast(event)
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        hub.stop()
+
+
+if __name__ == "__main__":
+    _demo_main()

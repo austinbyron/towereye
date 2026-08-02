@@ -55,3 +55,14 @@ async def test_garbage_does_not_kill_connection(hub):
         hub.broadcast({"type": "timeout"})
         msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
         assert msg["type"] == "timeout"
+
+
+def test_demo_events_are_valid_hub_traffic():
+    from towereye.hub import demo_events
+
+    events = demo_events()
+    kinds = [e["type"] for e in events]
+    assert "armed" in kinds and "result" in kinds and "unread" in kinds
+    for e in events:
+        if e["type"] == "result":
+            assert {"roll_id", "value", "confidence", "reader"} <= e.keys()
