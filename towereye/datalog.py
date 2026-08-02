@@ -32,3 +32,10 @@ class RollLogger:
         with self.rows_path.open("a") as f:
             f.write(json.dumps(row) + "\n")
         return roll_id
+
+    def confirm(self, roll_id: str, value: int) -> None:
+        with self.rows_path.open("a") as f:
+            f.write(json.dumps({"id": roll_id, "event": "confirm", "confirmed": value}) + "\n")
+
+    def frame_path(self, roll_id: str) -> Path:
+        return self.frames_dir / f"{roll_id}.png"
