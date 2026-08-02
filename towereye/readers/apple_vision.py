@@ -25,7 +25,12 @@ def _select(candidates, reader_name: str) -> Reading | None:
         return None
     value, confidence, dist = min(kept, key=lambda c: (round(c[2], 2), -c[1]))
     rival = any(c[0] != value and c[2] <= dist + CONFLICT_DIST_MARGIN for c in kept)
-    if rival:
+    # split-teen check: an off-center crop can separate a teen's leading 1 from
+    # its second digit (17 read as 7); a 10+d sighting anywhere casts doubt on d
+    teen = value <= 9 and any(
+        c[0] == value + 10 and c[1] >= MIN_CONFIDENCE for c in candidates
+    )
+    if rival or teen:
         confidence = min(confidence, CONFLICT_CONFIDENCE)
     return Reading(value=value, confidence=confidence, reader=reader_name)
 

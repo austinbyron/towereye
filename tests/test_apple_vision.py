@@ -77,6 +77,16 @@ def test_select_ignores_distant_rival_values():
     assert reading.confidence == 1.0
 
 
+def test_select_demotes_single_digit_when_its_teen_was_sighted():
+    from towereye.readers.apple_vision import _select
+
+    # a 17's leading 1 split off in an off-center crop: 7 is nearest center,
+    # but 17 was read at some rotation, even outside the distance window
+    reading = _select([(7, 1.0, 0.05), (17, 1.0, 0.4)], "apple_vision")
+    assert reading.value == 7
+    assert reading.confidence < 0.5  # chain falls through instead of trusting 7
+
+
 def test_select_rejects_far_and_weak_candidates():
     from towereye.readers.apple_vision import _select
 

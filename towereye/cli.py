@@ -11,7 +11,7 @@ import numpy as np
 
 from .datalog import RollLogger
 from .frames import CameraSource, VideoFileSource
-from .presence import CENTER_CROP, die_present
+from .presence import die_present
 from .readers import ReaderChain
 from .settle import SettleDetector, SettleState
 from .topface import die_blob, sharpness
@@ -19,6 +19,13 @@ from .topface import die_blob, sharpness
 # frames to pull after a settle so autofocus can catch up (~0.5s at 30fps);
 # the sharpest STABLE one is read
 POST_SETTLE_FRAMES = 15
+
+
+def _at_frame_edge(blob: tuple[float, float, float], frame: np.ndarray) -> bool:
+    cx, cy, r = blob
+    h, w = frame.shape[:2]
+    margin = 1.15 * r
+    return cx < margin or cy < margin or cx > w - margin or cy > h - margin
 
 
 def _die_unmoved(ref: tuple[float, float, float], frame: np.ndarray) -> bool:
@@ -31,13 +38,19 @@ def _die_unmoved(ref: tuple[float, float, float], frame: np.ndarray) -> bool:
     return abs(cx - rx) <= 0.5 * rr and abs(cy - ry) <= 0.5 * rr and 0.7 <= cr / rr <= 1.4
 
 
+def _watch_gate(frame: np.ndarray) -> bool:
+    # full-frame gate: the S floor and absolute die-size floor carry junk
+    # rejection, and a center restriction silently drops tray-edge dice
+    return die_present(frame, center_crop=1.0)
+
+
 def run_watch(
     frames: Iterator[np.ndarray],
     detector,
     chain,
     logger,
     report: Callable[[str], None],
-    presence: Callable[[np.ndarray], bool] = die_present,
+    presence: Callable[[np.ndarray], bool] = _watch_gate,
 ) -> None:
     for frame in frames:
         result = detector.feed(frame)
@@ -47,6 +60,12 @@ def run_watch(
                 detector.reset()
                 continue
             ref = die_blob(result.frame)
+            if ref is not None and _at_frame_edge(ref, result.frame):
+                # clipped by the frame boundary = oblique view, unreadable in
+                # principle; ask for a reroll like a cocked die
+                report("Die is at the tray edge - reroll")
+                detector.reset()
+                continue
             candidates = [result.frame]
             if ref is not None:
                 extra = itertools.islice(frames, POST_SETTLE_FRAMES)
@@ -124,18 +143,8 @@ def cmd_watch(args) -> int:
     frames = _zoom_frames(_source_from_args(args).frames(), args.zoom)
     if args.preview:
         frames = _preview_frames(frames)
-    # zoom pre-crops the frame, so widen the gate's crop to keep watching
-    # the same physical tray region it was tuned on
-    gate_crop = min(1.0, CENTER_CROP * max(args.zoom, 1.0))
     try:
-        run_watch(
-            frames,
-            SettleDetector(),
-            chain,
-            logger,
-            print,
-            presence=lambda f: die_present(f, center_crop=gate_crop),
-        )
+        run_watch(frames, SettleDetector(), chain, logger, print)
     except KeyboardInterrupt:
         pass
     print(f"Session over. Haiku API calls this session: {chain.haiku.calls}")

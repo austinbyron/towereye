@@ -29,6 +29,20 @@ def test_tiny_speck_returns_none():
     assert topface_crop(f) is None
 
 
+def test_recenter_targets_largest_cluster_not_pixel_mean():
+    import cv2
+
+    from towereye.topface import _central_numeral
+
+    crop = np.full((120, 120, 3), (140, 40, 30), dtype=np.uint8)  # blue face
+    white = (250, 245, 240)
+    cv2.putText(crop, "18", (18, 68), cv2.FONT_HERSHEY_SIMPLEX, 1.1, white, 3)
+    cv2.putText(crop, "5", (92, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.8, white, 2)
+    target = _central_numeral(crop)
+    assert target is not None
+    assert target[0] < 60  # the big 18 cluster on the left, not the gap between
+
+
 def test_sharpness_prefers_crisp_frame():
     import cv2
 

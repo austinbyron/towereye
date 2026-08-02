@@ -28,11 +28,11 @@ class ListLogger:
 
 def _throw_frames(color=(255, 120, 100)):
     def square(x):
-        f = np.zeros((48, 64, 3), dtype=np.uint8)
-        f[10:30, x : x + 20] = color
+        f = np.zeros((160, 240, 3), dtype=np.uint8)
+        f[45:115, x : x + 70] = color
         return f
 
-    return [square(x) for x in range(0, 30, 6)] + [square(24)] * 10
+    return [square(x) for x in range(0, 72, 12)] + [square(60)] * 10
 
 
 def test_run_watch_reports_and_logs_settled_roll():
@@ -139,6 +139,27 @@ def test_run_watch_ignores_post_settle_frames_where_die_moved():
 
     cx, _, _ = die_blob(reader.frames[0])
     assert abs(cx - 95) < 8  # the settled die (center x=95), not the moved one (x=195)
+
+
+def test_run_watch_asks_for_reroll_when_die_clipped_at_frame_edge():
+    lines = []
+    logger = ListLogger()
+
+    def edge_square(x):
+        f = np.zeros((160, 240, 3), dtype=np.uint8)
+        f[100:160, x : x + 80] = (255, 120, 100)  # die at the bottom boundary
+        return f
+
+    frames = [edge_square(x) for x in range(0, 72, 12)] + [edge_square(60)] * 10
+    run_watch(
+        frames=iter(frames),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=logger,
+        report=lines.append,
+    )
+    assert any("tray edge" in line for line in lines)
+    assert not logger.entries  # never read, never logged
 
 
 def test_zoom_frames_center_crops():

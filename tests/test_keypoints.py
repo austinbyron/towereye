@@ -5,11 +5,20 @@ from towereye.keypoints import KeypointReader, save_template
 
 
 def _textured(seed):
-    """A pearlescent-swirl stand-in: blurred noise is feature-rich like the die."""
+    """A die-face stand-in: white lettering-like strokes on a blue body,
+    so the lettering segmentation keeps them."""
     rng = np.random.default_rng(seed)
-    img = rng.integers(0, 255, (256, 256), dtype=np.uint8)
-    img = cv2.GaussianBlur(img, (5, 5), 0)
-    return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    img = np.full((256, 256, 3), (140, 40, 30), dtype=np.uint8)  # blue body
+    white = (250, 245, 240)
+    for gx in range(3):
+        for gy in range(3):
+            cx, cy = 64 + gx * 64, 64 + gy * 64  # separate glyph-sized marks
+            dx, dy, r = rng.integers(-18, 18, 2).tolist() + [int(rng.integers(8, 16))]
+            if rng.integers(2):
+                cv2.circle(img, (cx + dx, cy + dy), r, white, 5)
+            else:
+                cv2.line(img, (cx - r + dx, cy + dy), (cx + r + dx, cy - r + dy), white, 6)
+    return img
 
 
 def _rotated(img, deg):

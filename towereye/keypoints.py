@@ -1,10 +1,13 @@
-"""Free per-die face matcher: SIFT keypoints against calibrated face templates.
+"""Free face matcher: SIFT keypoints on the segmented white lettering.
 
-The die's pearlescent swirl is baked into the plastic, so every face is a fixed
-visual fingerprint. Matching is rotation-invariant and verified with a rigid
-RANSAC fit, which is exactly the physics of a settled die under a fixed camera.
-Conservative accept thresholds: when this reader answers it is almost certainly
-right; everything else falls through the chain.
+Matching runs on the numeral constellation (top glyph + adjacent fragments),
+not the pearl swirl: Austin owns two near-identical blue d20s, so per-die
+swirl fingerprints would break on a die swap, while the lettering comes from
+the same mold and transfers. Segmentation keys on paint being color-neutral
+(B-R ~ 0) where the die body and its specular glare stay blue-shifted.
+Matching is rotation-invariant and verified with a rigid RANSAC fit plus
+spread/centrality guards; when this reader answers it is almost certainly
+right, everything else falls through the chain.
 """
 from pathlib import Path
 
@@ -13,12 +16,12 @@ import numpy as np
 
 from .bench import parse_golden_name
 from .readers import Reading
-from .topface import topface_crop
+from .topface import lettering, topface_crop
 
 SIZE = 256          # working resolution for both templates and queries
-# Accept floor swept on 22 labeled real rolls: answer rate plateaus at 8 and
-# stays wrong-free down to 4 — the MARGIN rule is the binding safety check.
-MIN_INLIERS = 8
+# Accept floor swept on 28 labeled real rolls with segmented matching:
+# 19/28 answered, zero wrong, stable from floor 6 all the way down to 4.
+MIN_INLIERS = 6
 # Margin swept on 28 labeled rolls: 1.5 answers 21/28 at 0 wrong. The spread
 # and centrality guards now zero junk scores, so 2.0 was over-refusing (a
 # correct 17 at 11 inliers was blocked by a runner-up at 6).
@@ -61,8 +64,7 @@ class KeypointReader:
 
     def _features(self, img: np.ndarray):
         img = cv2.resize(img, (SIZE, SIZE), interpolation=cv2.INTER_CUBIC)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        return self._sift.detectAndCompute(gray, None)
+        return self._sift.detectAndCompute(lettering(img), None)
 
     def _inliers(self, kp1, des1, kp2, des2) -> int:
         matches = self._bf.knnMatch(des1, des2, k=2)

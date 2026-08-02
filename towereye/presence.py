@@ -7,8 +7,8 @@ import numpy as np
 # S ~104-111, real dice S ~150-180 (even dim no-LED frames), so S >= 130.
 HSV_LO = (95, 130, 50)
 HSV_HI = (135, 255, 255)
-CENTER_CROP = 0.6      # central fraction of the frame treated as the tray interior
-MIN_BLOB_FRAC = 0.006  # min largest-blob area vs cropped area (dice >= 1%, junk < 0.4%)
+CENTER_CROP = 0.6     # central fraction of the frame treated as the tray interior
+MIN_DIE_RADIUS = 35   # px, absolute: dice are r>=50 in every real session, junk < 30
 
 
 def die_present(frame: np.ndarray, center_crop: float = CENTER_CROP) -> bool:
@@ -21,4 +21,4 @@ def die_present(frame: np.ndarray, center_crop: float = CENTER_CROP) -> bool:
     count, _, stats, _ = cv2.connectedComponentsWithStats(mask)
     if count < 2:
         return False
-    return int(stats[1:, cv2.CC_STAT_AREA].max()) >= MIN_BLOB_FRAC * mask.size
+    return int(stats[1:, cv2.CC_STAT_AREA].max()) >= np.pi * MIN_DIE_RADIUS**2

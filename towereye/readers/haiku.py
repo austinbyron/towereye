@@ -13,6 +13,8 @@ PROMPT = (
     "edges belong to side faces - ignore them. The numeral may be rotated at "
     "any angle, so consider every orientation. On this die, 6 and 9 are "
     "disambiguated by a period or underline AFTER the digit (e.g. '6.' is six). "
+    "Teen values (10-19) have a leading 1 that can sit apart from the second "
+    "digit - before answering a single digit, check for a stray 1 beside it. "
     "Reply with only the integer (1-20) on the top face, nothing else."
 )
 
