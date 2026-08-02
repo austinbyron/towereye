@@ -45,6 +45,26 @@ def test_endless_motion_times_out():
     assert SettleState.SETTLED not in states
 
 
+def test_spin_in_place_defers_settle_until_truly_still():
+    det = SettleDetector(settle_frames=3, timeout_frames=100)
+    moving = [_with_square(x) for x in range(0, 30, 6)]
+
+    def spin_frame(i):
+        # die parked at x=24 but spinning: only the tiny numeral patch changes,
+        # far too small to move the whole-frame MEAN but real localized motion
+        f = _with_square(24)
+        if i % 2:
+            f[18:22, 30:34] = 0
+        return f
+
+    spinning = [spin_frame(i) for i in range(10)]
+    still = [_with_square(24) for _ in range(10)]
+    results = _feed_all(det, moving + spinning + still)
+    settled = [i for i, r in enumerate(results) if r.state == SettleState.SETTLED]
+    assert len(settled) == 1
+    assert settled[0] >= len(moving) + len(spinning)  # not mid-spin
+
+
 def test_reset_allows_second_throw():
     det = SettleDetector(settle_frames=3, timeout_frames=100)
     _feed_all(det, [_with_square(x) for x in range(0, 30, 6)])

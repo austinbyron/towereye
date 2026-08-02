@@ -10,9 +10,11 @@ class FakeReader:
         self.name = name
         self._reading = reading
         self.called = False
+        self.seen = None
 
     def read(self, frame):
         self.called = True
+        self.seen = frame
         return self._reading
 
 
@@ -22,6 +24,7 @@ def test_parse_die_value():
     assert parse_die_value("9_") == 9
     assert parse_die_value("21") is None   # out of range
     assert parse_die_value("0") is None
+    assert parse_die_value("01") is None   # upside-down 10, not a 1
     assert parse_die_value("banana") is None
     assert parse_die_value("") is None
 
@@ -53,3 +56,17 @@ def test_chain_returns_best_effort_when_all_weak():
 def test_chain_returns_none_when_all_fail():
     chain = ReaderChain([FakeReader("a", None), FakeReader("b", None)])
     assert chain.read(FRAME) is None
+
+
+def test_chain_hands_readers_the_topface_crop():
+    f = np.zeros((200, 200, 3), dtype=np.uint8)
+    f[20:90, 100:170] = (255, 120, 100)  # die-sized blob away from frame center
+    reader = FakeReader("a", Reading(value=4, confidence=0.9, reader="a"))
+    ReaderChain([reader]).read(f)
+    assert reader.seen.shape[0] < 70  # cropped to the top face, not the full frame
+
+
+def test_chain_passes_full_frame_when_no_die_found():
+    reader = FakeReader("a", Reading(value=4, confidence=0.9, reader="a"))
+    ReaderChain([reader]).read(FRAME)
+    assert reader.seen is FRAME

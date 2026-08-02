@@ -32,8 +32,33 @@ def test_parses_reply_into_reading():
     assert image_block["source"]["type"] == "base64"
 
 
+def test_small_crop_is_upscaled_untrimmed_before_sending():
+    import base64
+
+    import cv2
+
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+    frame[0:8, 0:8] = (0, 0, 255)  # corner content must SURVIVE: trimming was
+    client = _mock_client("17")     # slicing leading digits (19 -> 9) off-center
+    HaikuReader(client=client).read(frame)
+    data = client.messages.create.call_args.kwargs["messages"][0]["content"][0]["source"]["data"]
+    jpg = np.frombuffer(base64.standard_b64decode(data), dtype=np.uint8)
+    sent = cv2.imdecode(jpg, cv2.IMREAD_COLOR)
+    assert max(sent.shape[:2]) >= 300
+    assert sent[..., 2].max() > 150  # corner content still present
+
+
 def test_garbage_reply_returns_none():
     reader = HaikuReader(client=_mock_client("I cannot tell"))
+    assert reader.read(FRAME) is None
+
+
+def test_missing_auth_returns_none():
+    client = MagicMock()
+    client.messages.create.side_effect = TypeError(
+        "Could not resolve authentication method."
+    )
+    reader = HaikuReader(client=client)
     assert reader.read(FRAME) is None
 
 

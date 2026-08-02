@@ -20,10 +20,17 @@ class SettleResult:
     frame: np.ndarray | None = None
 
 
+DIFF_INTENSITY = 15  # per-pixel gray delta that counts as a changed pixel
+
+
 class SettleDetector:
+    """Motion = fraction of pixels changing meaningfully, not mean frame delta:
+    a die spinning in place moves ~1-2% of pixels hard, which a whole-frame
+    mean washes out but a changed-pixel fraction catches."""
+
     def __init__(
         self,
-        motion_threshold: float = 4.0,
+        motion_threshold: float = 0.003,
         settle_frames: int = 15,
         timeout_frames: int = 300,
     ):
@@ -50,7 +57,7 @@ class SettleDetector:
         if self._prev is None:
             self._prev = cur
             return SettleResult(SettleState.WAITING)
-        diff = float(np.mean(cv2.absdiff(cur, self._prev)))
+        diff = float((cv2.absdiff(cur, self._prev) > DIFF_INTENSITY).mean())
         self._prev = cur
 
         if not self._motion_seen:

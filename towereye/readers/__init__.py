@@ -21,8 +21,8 @@ class Reader(Protocol):
 def parse_die_value(text: str) -> int | None:
     """Parse OCR/LLM output into a die value 1-20, tolerating 6./9_ marks."""
     cleaned = text.strip().strip("._,")
-    if not cleaned.isdigit():
-        return None
+    if not cleaned.isdigit() or cleaned.startswith("0"):
+        return None  # leading zero = upside-down read (01 is a flipped 10)
     value = int(cleaned)
     return value if 1 <= value <= 20 else None
 
@@ -33,6 +33,11 @@ class ReaderChain:
         self.min_confidence = min_confidence
 
     def read(self, frame: np.ndarray) -> Reading | None:
+        from ..topface import topface_crop
+
+        crop = topface_crop(frame)
+        if crop is not None:
+            frame = crop
         best: Reading | None = None
         for reader in self.readers:
             reading = reader.read(frame)
