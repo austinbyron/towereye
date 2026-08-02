@@ -253,3 +253,29 @@ def test_format_event_matches_console_lines():
     assert format_event({"type": "timeout"}) == (
         "Die never settled (cocked or bounced out?) - re-roll"
     )
+
+
+def test_fan_out_prints_and_broadcasts(capsys):
+    from towereye.cli import _fan_out
+
+    class FakeHub:
+        def __init__(self):
+            self.events = []
+
+        def broadcast(self, e):
+            self.events.append(e)
+
+    hub = FakeHub()
+    emit = _fan_out(hub, ListLogger())
+    event = {"type": "result", "roll_id": "r", "value": 4, "confidence": 0.95, "reader": "keypoints"}
+    emit(event)
+    assert hub.events == [event]
+    assert "You rolled 4" in capsys.readouterr().out
+
+
+def test_fan_out_without_hub_still_prints(capsys):
+    from towereye.cli import _fan_out
+
+    emit = _fan_out(None, ListLogger())
+    emit({"type": "timeout"})
+    assert "never settled" in capsys.readouterr().out

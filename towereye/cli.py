@@ -60,6 +60,16 @@ def format_event(event: dict) -> str:
     return "Die never settled (cocked or bounced out?) - re-roll"
 
 
+def _fan_out(hub, logger) -> Callable[[dict], None]:
+    """Print events to console and broadcast to hub if available."""
+    def emit(event: dict) -> None:
+        print(format_event(event))
+        if hub is not None:
+            hub.broadcast(event)
+
+    return emit
+
+
 def run_watch(
     frames: Iterator[np.ndarray],
     detector,
@@ -174,14 +184,25 @@ def _preview_frames(frames: Iterator[np.ndarray]) -> Iterator[np.ndarray]:
 def cmd_watch(args) -> int:
     chain = _build_chain()
     logger = RollLogger(args.log_dir)
+    hub = None
+    if not args.no_hub:
+        from .hub import Hub
+
+        hub = Hub(port=args.hub_port)
+        hub.on_confirm = logger.confirm
+        hub.start_in_thread()
+        print(f"Hub listening on ws://127.0.0.1:{hub.port}")
     print(f"Watching for rolls (log dir: {args.log_dir}). Ctrl-C to stop.")
     frames = _zoom_frames(_source_from_args(args).frames(), args.zoom)
     if args.preview:
         frames = _preview_frames(frames)
     try:
-        run_watch(frames, SettleDetector(), chain, logger, lambda e: print(format_event(e)))
+        run_watch(frames, SettleDetector(), chain, logger, _fan_out(hub, logger))
     except KeyboardInterrupt:
         pass
+    finally:
+        if hub is not None:
+            hub.stop()
     print(f"Session over. Haiku API calls this session: {chain.haiku.calls}")
     return 0
 
@@ -300,6 +321,8 @@ def main(argv=None) -> int:
     watch.add_argument("--log-dir", default="dataset", help="roll dataset directory")
     watch.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop)")
     watch.add_argument("--preview", action="store_true", help="show the live feed in a window")
+    watch.add_argument("--hub-port", type=int, default=8777, help="WebSocket hub port")
+    watch.add_argument("--no-hub", action="store_true", help="disable the WebSocket hub")
     watch.set_defaults(func=cmd_watch)
 
     read = sub.add_parser("read", help="read a die from a still image")
