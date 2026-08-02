@@ -44,12 +44,24 @@ def _watch_gate(frame: np.ndarray) -> bool:
     return die_present(frame, center_crop=1.0)
 
 
+def format_event(event: dict) -> str:
+    """Convert a structured event dict to a console line."""
+    kind = event["type"]
+    if kind == "result":
+        return f"You rolled {event['value']} ({event['reader']}, {event['confidence']:.2f})"
+    if kind == "unread":
+        return "Could not read the die - check lighting/framing"
+    if kind == "reroll":
+        return "Die is at the tray edge - reroll"
+    return "Die never settled (cocked or bounced out?) - re-roll"
+
+
 def run_watch(
     frames: Iterator[np.ndarray],
     detector,
     chain,
     logger,
-    report: Callable[[str], None],
+    emit: Callable[[dict], None],
     presence: Callable[[np.ndarray], bool] = _watch_gate,
 ) -> None:
     for frame in frames:
@@ -63,7 +75,7 @@ def run_watch(
             if ref is not None and _at_frame_edge(ref, result.frame):
                 # clipped by the frame boundary = oblique view, unreadable in
                 # principle; ask for a reroll like a cocked die
-                report("Die is at the tray edge - reroll")
+                emit({"type": "reroll", "reason": "tray-edge"})
                 detector.reset()
                 continue
             candidates = [result.frame]
@@ -72,14 +84,20 @@ def run_watch(
                 candidates += [f for f in extra if _die_unmoved(ref, f)]
             settled = max(candidates, key=sharpness)
             reading = chain.read(settled)
+            roll_id = logger.log(settled, reading)
             if reading is not None:
-                report(f"You rolled {reading.value} ({reading.reader}, {reading.confidence:.2f})")
+                emit({
+                    "type": "result",
+                    "roll_id": roll_id,
+                    "value": reading.value,
+                    "confidence": reading.confidence,
+                    "reader": reading.reader,
+                })
             else:
-                report("Could not read the die - check lighting/framing")
-            logger.log(settled, reading)
+                emit({"type": "unread", "roll_id": roll_id})
             detector.reset()
         elif result.state == SettleState.TIMEOUT:
-            report("Die never settled (cocked or bounced out?) - re-roll")
+            emit({"type": "timeout"})
             detector.reset()
 
 
@@ -144,7 +162,7 @@ def cmd_watch(args) -> int:
     if args.preview:
         frames = _preview_frames(frames)
     try:
-        run_watch(frames, SettleDetector(), chain, logger, print)
+        run_watch(frames, SettleDetector(), chain, logger, lambda e: print(format_event(e)))
     except KeyboardInterrupt:
         pass
     print(f"Session over. Haiku API calls this session: {chain.haiku.calls}")

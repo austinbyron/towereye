@@ -36,22 +36,22 @@ def _throw_frames(color=(255, 120, 100)):
 
 
 def test_run_watch_reports_and_logs_settled_roll():
-    lines = []
+    events = []
     logger = ListLogger()
     run_watch(
         frames=iter(_throw_frames()),
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
-        report=lines.append,
+        emit=events.append,
     )
-    assert any("You rolled 7" in line for line in lines)
+    assert any(e["type"] == "result" and e["value"] == 7 for e in events)
     assert len(logger.entries) == 1
     assert logger.entries[0].value == 7
 
 
 def test_run_watch_skips_settles_without_a_die():
-    lines = []
+    events = []
     logger = ListLogger()
     # a gray blob settles (hand / empty-tray motion), then a blue die settles
     frames = _throw_frames(color=(128, 128, 128)) + _throw_frames()
@@ -60,10 +60,10 @@ def test_run_watch_skips_settles_without_a_die():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
-        report=lines.append,
+        emit=events.append,
     )
     assert len(logger.entries) == 1  # gray settle neither reported nor logged
-    assert sum("You rolled 7" in line for line in lines) == 1
+    assert sum(1 for e in events if e["type"] == "result" and e["value"] == 7) == 1
 
 
 def test_load_dotenv_fills_missing_vars_without_clobbering(tmp_path, monkeypatch):
@@ -114,7 +114,7 @@ def test_run_watch_reads_the_sharpest_post_settle_frame():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=reader,
         logger=ListLogger(),
-        report=lambda _: None,
+        emit=lambda _: None,
     )
     assert reader.frames  # a roll was read
     from towereye.topface import sharpness
@@ -132,7 +132,7 @@ def test_run_watch_ignores_post_settle_frames_where_die_moved():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=reader,
         logger=ListLogger(),
-        report=lambda _: None,
+        emit=lambda _: None,
     )
     assert reader.frames
     from towereye.topface import die_blob
@@ -142,7 +142,7 @@ def test_run_watch_ignores_post_settle_frames_where_die_moved():
 
 
 def test_run_watch_asks_for_reroll_when_die_clipped_at_frame_edge():
-    lines = []
+    events = []
     logger = ListLogger()
 
     def edge_square(x):
@@ -156,9 +156,9 @@ def test_run_watch_asks_for_reroll_when_die_clipped_at_frame_edge():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
-        report=lines.append,
+        emit=events.append,
     )
-    assert any("tray edge" in line for line in lines)
+    assert any(e["type"] == "reroll" for e in events)
     assert not logger.entries  # never read, never logged
 
 
@@ -174,3 +174,37 @@ def test_zoom_frames_at_1x_is_identity():
     f = np.arange(90 * 120 * 3, dtype=np.uint8).reshape(90, 120, 3)
     (out,) = _zoom_frames(iter([f]), 1.0)
     assert out is f
+
+
+def test_run_watch_emits_result_event():
+    events = []
+    logger = ListLogger()
+    run_watch(
+        frames=iter(_throw_frames()),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=logger,
+        emit=events.append,
+    )
+    results = [e for e in events if e["type"] == "result"]
+    assert len(results) == 1
+    assert results[0]["value"] == 7
+    assert results[0]["reader"] == "fixed"
+    assert results[0]["roll_id"] == "test-id"  # ListLogger returns "test-id"
+
+
+def test_format_event_matches_console_lines():
+    from towereye.cli import format_event
+
+    assert format_event(
+        {"type": "result", "roll_id": "x", "value": 17, "confidence": 0.95, "reader": "keypoints"}
+    ) == "You rolled 17 (keypoints, 0.95)"
+    assert format_event({"type": "unread", "roll_id": "x"}) == (
+        "Could not read the die - check lighting/framing"
+    )
+    assert format_event({"type": "reroll", "reason": "tray-edge"}) == (
+        "Die is at the tray edge - reroll"
+    )
+    assert format_event({"type": "timeout"}) == (
+        "Die never settled (cocked or bounced out?) - re-roll"
+    )
