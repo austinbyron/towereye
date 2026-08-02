@@ -46,6 +46,8 @@ class Hub:
                     msg = json.loads(raw)
                 except (json.JSONDecodeError, TypeError):
                     continue
+                if not isinstance(msg, dict):
+                    continue
                 kind = msg.get("type")
                 if kind == "arm":
                     if self.on_arm is not None:

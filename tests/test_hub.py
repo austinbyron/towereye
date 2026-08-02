@@ -50,6 +50,8 @@ async def test_garbage_does_not_kill_connection(hub):
     async with websockets.connect(f"ws://127.0.0.1:{hub.port}") as ws:
         await ws.send("not json")
         await ws.send(json.dumps({"type": "mystery"}))
+        await ws.send(json.dumps("5"))
+        await ws.send(json.dumps([1, 2]))
         hub.broadcast({"type": "timeout"})
         msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
         assert msg["type"] == "timeout"
