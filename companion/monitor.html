@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>towereye monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #10141a; --panel: #1a212b; --text: #e6ebf2; --muted: #8b98a9;
+    --keypoints: #4caf7d; --vision: #5b9bd5; --haiku: #e0a93e; --bad: #d06060;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    font: 15px/1.5 -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    padding: 24px; max-width: 640px; margin: 0 auto;
+  }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: .3px; }
+  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
+  #dot.on { background: var(--keypoints); }
+  #status { color: var(--muted); font-size: 13px; }
+  #armed {
+    display: none; background: var(--panel); border-left: 3px solid var(--vision);
+    padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 14px;
+  }
+  #counters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .counter {
+    background: var(--panel); border-radius: 8px; padding: 8px 14px;
+    text-align: center; min-width: 84px;
+  }
+  .counter b { display: block; font-size: 20px; }
+  .counter span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  #feed { display: flex; flex-direction: column; gap: 8px; }
+  .roll {
+    background: var(--panel); border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .roll .value { font-size: 26px; font-weight: 700; min-width: 44px; text-align: center; }
+  .roll .value.nat20 { color: var(--keypoints); }
+  .roll .value.nat1 { color: var(--bad); }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px; color: #10141a; font-weight: 600;
+  }
+  .badge.keypoints { background: var(--keypoints); }
+  .badge.apple_vision { background: var(--vision); }
+  .badge.haiku { background: var(--haiku); }
+  .roll .when { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .roll.quiet { color: var(--muted); font-size: 13px; }
+  #empty { color: var(--muted); text-align: center; padding: 30px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div id="dot"></div>
+  <h1>towereye</h1>
+  <div id="status">connecting&hellip;</div>
+</header>
+<div id="armed"></div>
+<div id="counters">
+  <div class="counter"><b id="c-rolls">0</b><span>rolls</span></div>
+  <div class="counter"><b id="c-keypoints">0</b><span>keypoints</span></div>
+  <div class="counter"><b id="c-apple_vision">0</b><span>vision</span></div>
+  <div class="counter"><b id="c-haiku">0</b><span>haiku</span></div>
+  <div class="counter"><b id="c-other">0</b><span>reroll/miss</span></div>
+</div>
+<div id="feed"><div id="empty">no rolls yet &mdash; drop a die</div></div>
+
+<script>
+(function () {
+  "use strict";
+  const port = new URLSearchParams(location.search).get("port") || "8777";
+  const HUB = `ws://127.0.0.1:${port}`;
+  const MAX_ROWS = 50;
+  const $ = (id) => document.getElementById(id);
+  const counts = { rolls: 0, keypoints: 0, apple_vision: 0, haiku: 0, other: 0 };
+  let lastEventAt = null;
+
+  function setStatus(connected) {
+    $("dot").className = connected ? "on" : "";
+    $("status").textContent = connected ? `connected to ${HUB}` : "hub offline - retrying";
+  }
+
+  function tick() {
+    if (lastEventAt !== null && $("dot").className === "on") {
+      const s = Math.round((Date.now() - lastEventAt) / 1000);
+      $("status").textContent = `connected to ${HUB} - last event ${s}s ago`;
+    }
+  }
+  setInterval(tick, 1000);
+
+  function bump(key) {
+    counts[key] += 1;
+    $(`c-${key}`).textContent = counts[key];
+  }
+
+  function row(html, quiet) {
+    const empty = $("empty");
+    if (empty) empty.remove();
+    const div = document.createElement("div");
+    div.className = quiet ? "roll quiet" : "roll";
+    div.innerHTML = html;
+    const feed = $("feed");
+    feed.prepend(div);
+    while (feed.children.length > MAX_ROWS) feed.lastChild.remove();
+  }
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const stamp = () => new Date().toLocaleTimeString([], { hour12: false });
+
+  function handle(e, live) {
+    if (live) lastEventAt = Date.now();
+    if (e.type === "result") {
+      bump("rolls");
+      if (counts[e.reader] !== undefined) bump(e.reader);
+      const cls = e.value === 20 ? "value nat20" : e.value === 1 ? "value nat1" : "value";
+      const conf = Number.isFinite(e.confidence) ? e.confidence.toFixed(2) : "?";
+      row(`<div class="${cls}">${esc(e.value)}</div>` +
+          `<span class="badge ${esc(e.reader)}">${esc(e.reader)}</span>` +
+          `<span>${conf}</span><span class="when">${stamp()}</span>`);
+    } else if (e.type === "unread") {
+      bump("other");
+      row(`could not read - entered manually?<span class="when">${stamp()}</span>`, true);
+    } else if (e.type === "reroll") {
+      bump("other");
+      row(`die at tray edge - reroll<span class="when">${stamp()}</span>`, true);
+    } else if (e.type === "timeout") {
+      bump("other");
+      row(`never settled - reroll<span class="when">${stamp()}</span>`, true);
+    } else if (e.type === "armed") {
+      const a = $("armed");
+      a.style.display = "block";
+      a.textContent = `rolling: ${e.label || "roll"} (${e.die || "d20"})`;
+    }
+  }
+
+  function connect() {
+    const ws = new WebSocket(HUB);
+    ws.onopen = () => setStatus(true);
+    ws.onclose = () => { setStatus(false); setTimeout(connect, 3000); };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (m) => {
+      let e; try { e = JSON.parse(m.data); } catch { return; }
+      if (e.type === "history") {
+        (e.events || []).forEach((h) => handle(h, false));
+      } else {
+        handle(e, true);
+      }
+    };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

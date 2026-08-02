@@ -3,8 +3,11 @@ and routes arm/confirm messages back to the watch loop."""
 import asyncio
 import json
 import threading
+from collections import deque
 
 import websockets
+
+HISTORY_SIZE = 50  # events replayed to a client that connects mid-session
 
 
 class Hub:
@@ -14,6 +17,7 @@ class Hub:
         self.on_confirm = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set = set()
+        self._history: deque = deque(maxlen=HISTORY_SIZE)
         self._thread: threading.Thread | None = None
         self._started = threading.Event()
         self._stop_event: asyncio.Event | None = None
@@ -46,6 +50,8 @@ class Hub:
     async def _handler(self, ws) -> None:
         self._clients.add(ws)
         try:
+            if self._history:
+                await ws.send(json.dumps({"type": "history", "events": list(self._history)}))
             async for raw in ws:
                 try:
                     msg = json.loads(raw)
@@ -75,6 +81,7 @@ class Hub:
             self._clients.discard(ws)
 
     async def _send_all(self, event: dict) -> None:
+        self._history.append(event)  # loop thread only; replayed to late joiners
         raw = json.dumps(event)
         for ws in list(self._clients):
             try:

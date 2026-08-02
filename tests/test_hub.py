@@ -73,6 +73,27 @@ def test_broadcast_after_stop_is_noop(hub):
     hub.broadcast({"type": "timeout"})  # must not raise
 
 
+@pytest.mark.asyncio
+async def test_new_client_receives_recent_event_history(hub):
+    hub.broadcast({"type": "result", "roll_id": "r1", "value": 12,
+                   "confidence": 0.95, "reader": "keypoints"})
+    hub.broadcast({"type": "timeout"})
+    await asyncio.sleep(0.2)  # let the loop thread record them
+    async with websockets.connect(f"ws://127.0.0.1:{hub.port}") as ws:
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
+        assert msg["type"] == "history"
+        assert [e["type"] for e in msg["events"]] == ["result", "timeout"]
+        assert msg["events"][0]["value"] == 12
+
+
+@pytest.mark.asyncio
+async def test_client_with_no_history_gets_no_history_message(hub):
+    async with websockets.connect(f"ws://127.0.0.1:{hub.port}") as ws:
+        hub.broadcast({"type": "timeout"})
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
+        assert msg["type"] == "timeout"  # first message is live, not history
+
+
 def test_demo_events_are_valid_hub_traffic():
     from towereye.hub import demo_events
 

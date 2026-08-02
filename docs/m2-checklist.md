@@ -1,5 +1,11 @@
 # M2 manual verification checklist
 
+## Monitor page
+Open `companion/monitor.html` in any browser (double-click works; add `?port=NNNN`
+for a non-default hub port). Shows hub connection status, the armed roll label,
+a live feed of recent rolls with reader/confidence, and session counters.
+Late joins replay the last 50 events. Also works as an OBS browser source.
+
 ## Against the demo hub (no rig needed)
 1. `.venv/bin/python -m towereye.hub --demo`
 2. Install `companion/towereye.user.js` in Tampermonkey; open any dndbeyond.com page.
