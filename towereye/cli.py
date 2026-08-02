@@ -3,6 +3,7 @@ import argparse
 import itertools
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -19,6 +20,9 @@ from .topface import die_blob, sharpness
 # frames to pull after a settle so autofocus can catch up (~0.5s at 30fps);
 # the sharpest STABLE one is read
 POST_SETTLE_FRAMES = 15
+
+# suppress duplicate settle reports if die hasn't moved and event is within this window
+DEDUP_SECONDS = 8.0
 
 
 def _at_frame_edge(blob: tuple[float, float, float], frame: np.ndarray) -> bool:
@@ -63,7 +67,9 @@ def run_watch(
     logger,
     emit: Callable[[dict], None],
     presence: Callable[[np.ndarray], bool] = _watch_gate,
+    clock: Callable[[], float] = time.monotonic,
 ) -> None:
+    last_read: tuple[tuple[float, float, float], float] | None = None  # (blob, when)
     for frame in frames:
         result = detector.feed(frame)
         if result.state == SettleState.SETTLED:
@@ -78,9 +84,18 @@ def run_watch(
                 emit({"type": "reroll", "reason": "tray-edge"})
                 detector.reset()
                 continue
+            if (
+                ref is not None
+                and last_read is not None
+                and clock() - last_read[1] < DEDUP_SECONDS
+                and _die_unmoved(last_read[0], result.frame)
+            ):
+                # same die, same spot, moments later: duplicate settle
+                detector.reset()
+                continue
             candidates = [result.frame]
             if ref is not None:
-                extra = itertools.islice(frames, POST_SETTLE_FRAMES)
+                extra = list(itertools.islice(frames, POST_SETTLE_FRAMES))
                 candidates += [f for f in extra if _die_unmoved(ref, f)]
             settled = max(candidates, key=sharpness)
             reading = chain.read(settled)
@@ -95,6 +110,8 @@ def run_watch(
                 })
             else:
                 emit({"type": "unread", "roll_id": roll_id})
+            if ref is not None:
+                last_read = (ref, clock())
             detector.reset()
         elif result.state == SettleState.TIMEOUT:
             emit({"type": "timeout"})

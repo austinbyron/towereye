@@ -193,6 +193,51 @@ def test_run_watch_emits_result_event():
     assert results[0]["roll_id"] == "test-id"  # ListLogger returns "test-id"
 
 
+def test_run_watch_dedupes_resettle_of_unmoved_die():
+    events = []
+    logger = ListLogger()
+    # roll settles, then the same die re-settles (shadow flicker), then moves
+    throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
+    resettle = [_die_square(60)] * 3 + [_die_square(61)] * 2 + [_die_square(60)] * 10
+    fake_now = [0.0]
+    run_watch(
+        frames=iter(throw + resettle),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=logger,
+        emit=events.append,
+        clock=lambda: fake_now[0],
+    )
+    assert len([e for e in events if e["type"] == "result"]) == 1
+    assert len(logger.entries) == 1
+
+
+def test_run_watch_reports_again_after_cooldown_expires():
+    events = []
+    # Clock returns 0.0 first time (first settle), then 100.0+ (well past cooldown)
+    times = [0.0, 100.0, 100.0, 100.0]
+    idx = [0]
+
+    def clock():
+        val = times[idx[0]]
+        idx[0] = min(idx[0] + 1, len(times) - 1)
+        return val
+
+    # First: throw and settle at position 60
+    throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
+    # Second: large movement to position 0, then back to 60 to trigger a new settle
+    resettle = [_die_square(0)] * 20 + [_die_square(60)] * 10
+    run_watch(
+        frames=iter(throw + resettle),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=ListLogger(),
+        emit=events.append,
+        clock=clock,
+    )
+    assert len([e for e in events if e["type"] == "result"]) == 2
+
+
 def test_format_event_matches_console_lines():
     from towereye.cli import format_event
 
