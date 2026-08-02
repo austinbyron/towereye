@@ -3,6 +3,7 @@ import argparse
 import itertools
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -19,6 +20,9 @@ from .topface import die_blob, sharpness
 # frames to pull after a settle so autofocus can catch up (~0.5s at 30fps);
 # the sharpest STABLE one is read
 POST_SETTLE_FRAMES = 15
+
+# suppress duplicate settle reports if die hasn't moved and event is within this window
+DEDUP_SECONDS = 8.0
 
 
 def _at_frame_edge(blob: tuple[float, float, float], frame: np.ndarray) -> bool:
@@ -44,14 +48,55 @@ def _watch_gate(frame: np.ndarray) -> bool:
     return die_present(frame, center_crop=1.0)
 
 
+def format_event(event: dict) -> str:
+    """Convert a structured event dict to a console line."""
+    kind = event["type"]
+    if kind == "result":
+        return f"You rolled {event['value']} ({event['reader']}, {event['confidence']:.2f})"
+    if kind == "unread":
+        return "Could not read the die - check lighting/framing"
+    if kind == "reroll":
+        return "Die is at the tray edge - reroll"
+    return "Die never settled (cocked or bounced out?) - re-roll"
+
+
+def _fan_out(hub, logger) -> Callable[[dict], None]:
+    """Print events to console and broadcast to hub if available."""
+    def emit(event: dict) -> None:
+        print(format_event(event))
+        if hub is not None:
+            hub.broadcast(event)
+
+    return emit
+
+
+def _harvest_on_confirm(logger, template_dir="templates", max_per_face=6):
+    from .keypoints import save_template
+
+    def on_confirm(roll_id: str, value: int) -> None:
+        logger.confirm(roll_id, value)
+        path = logger.frame_path(roll_id)
+        if not path.exists():
+            return
+        if len(list(Path(template_dir).glob(f"{value}_*.png"))) >= max_per_face:
+            return
+        frame = cv2.imread(str(path))
+        if frame is not None:
+            save_template(frame, value, template_dir)
+
+    return on_confirm
+
+
 def run_watch(
     frames: Iterator[np.ndarray],
     detector,
     chain,
     logger,
-    report: Callable[[str], None],
+    emit: Callable[[dict], None],
     presence: Callable[[np.ndarray], bool] = _watch_gate,
+    clock: Callable[[], float] = time.monotonic,
 ) -> None:
+    last_read: tuple[tuple[float, float, float], float] | None = None  # (blob, when)
     for frame in frames:
         result = detector.feed(frame)
         if result.state == SettleState.SETTLED:
@@ -63,23 +108,40 @@ def run_watch(
             if ref is not None and _at_frame_edge(ref, result.frame):
                 # clipped by the frame boundary = oblique view, unreadable in
                 # principle; ask for a reroll like a cocked die
-                report("Die is at the tray edge - reroll")
+                emit({"type": "reroll", "reason": "tray-edge"})
+                detector.reset()
+                continue
+            if (
+                ref is not None
+                and last_read is not None
+                and clock() - last_read[1] < DEDUP_SECONDS
+                and _die_unmoved(last_read[0], result.frame)
+            ):
+                # same die, same spot, moments later: duplicate settle
                 detector.reset()
                 continue
             candidates = [result.frame]
             if ref is not None:
-                extra = itertools.islice(frames, POST_SETTLE_FRAMES)
+                extra = list(itertools.islice(frames, POST_SETTLE_FRAMES))
                 candidates += [f for f in extra if _die_unmoved(ref, f)]
             settled = max(candidates, key=sharpness)
             reading = chain.read(settled)
+            roll_id = logger.log(settled, reading)
             if reading is not None:
-                report(f"You rolled {reading.value} ({reading.reader}, {reading.confidence:.2f})")
+                emit({
+                    "type": "result",
+                    "roll_id": roll_id,
+                    "value": reading.value,
+                    "confidence": reading.confidence,
+                    "reader": reading.reader,
+                })
             else:
-                report("Could not read the die - check lighting/framing")
-            logger.log(settled, reading)
+                emit({"type": "unread", "roll_id": roll_id})
+            if ref is not None:
+                last_read = (ref, clock())
             detector.reset()
         elif result.state == SettleState.TIMEOUT:
-            report("Die never settled (cocked or bounced out?) - re-roll")
+            emit({"type": "timeout"})
             detector.reset()
 
 
@@ -139,14 +201,29 @@ def _preview_frames(frames: Iterator[np.ndarray]) -> Iterator[np.ndarray]:
 def cmd_watch(args) -> int:
     chain = _build_chain()
     logger = RollLogger(args.log_dir)
+    hub = None
+    if not args.no_hub:
+        from .hub import Hub
+
+        try:
+            hub = Hub(port=args.hub_port)
+            hub.on_confirm = _harvest_on_confirm(logger)
+            hub.start_in_thread()
+            print(f"Hub listening on ws://127.0.0.1:{hub.port}")
+        except Exception as exc:
+            print(f"Hub unavailable ({exc}); continuing without it")
+            hub = None
     print(f"Watching for rolls (log dir: {args.log_dir}). Ctrl-C to stop.")
     frames = _zoom_frames(_source_from_args(args).frames(), args.zoom)
     if args.preview:
         frames = _preview_frames(frames)
     try:
-        run_watch(frames, SettleDetector(), chain, logger, print)
+        run_watch(frames, SettleDetector(), chain, logger, _fan_out(hub, logger))
     except KeyboardInterrupt:
         pass
+    finally:
+        if hub is not None:
+            hub.stop()
     print(f"Session over. Haiku API calls this session: {chain.haiku.calls}")
     return 0
 
@@ -265,6 +342,8 @@ def main(argv=None) -> int:
     watch.add_argument("--log-dir", default="dataset", help="roll dataset directory")
     watch.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop)")
     watch.add_argument("--preview", action="store_true", help="show the live feed in a window")
+    watch.add_argument("--hub-port", type=int, default=8777, help="WebSocket hub port")
+    watch.add_argument("--no-hub", action="store_true", help="disable the WebSocket hub")
     watch.set_defaults(func=cmd_watch)
 
     read = sub.add_parser("read", help="read a die from a still image")

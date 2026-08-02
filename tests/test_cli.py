@@ -36,22 +36,22 @@ def _throw_frames(color=(255, 120, 100)):
 
 
 def test_run_watch_reports_and_logs_settled_roll():
-    lines = []
+    events = []
     logger = ListLogger()
     run_watch(
         frames=iter(_throw_frames()),
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
-        report=lines.append,
+        emit=events.append,
     )
-    assert any("You rolled 7" in line for line in lines)
+    assert any(e["type"] == "result" and e["value"] == 7 for e in events)
     assert len(logger.entries) == 1
     assert logger.entries[0].value == 7
 
 
 def test_run_watch_skips_settles_without_a_die():
-    lines = []
+    events = []
     logger = ListLogger()
     # a gray blob settles (hand / empty-tray motion), then a blue die settles
     frames = _throw_frames(color=(128, 128, 128)) + _throw_frames()
@@ -60,10 +60,10 @@ def test_run_watch_skips_settles_without_a_die():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
-        report=lines.append,
+        emit=events.append,
     )
     assert len(logger.entries) == 1  # gray settle neither reported nor logged
-    assert sum("You rolled 7" in line for line in lines) == 1
+    assert sum(1 for e in events if e["type"] == "result" and e["value"] == 7) == 1
 
 
 def test_load_dotenv_fills_missing_vars_without_clobbering(tmp_path, monkeypatch):
@@ -114,7 +114,7 @@ def test_run_watch_reads_the_sharpest_post_settle_frame():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=reader,
         logger=ListLogger(),
-        report=lambda _: None,
+        emit=lambda _: None,
     )
     assert reader.frames  # a roll was read
     from towereye.topface import sharpness
@@ -132,7 +132,7 @@ def test_run_watch_ignores_post_settle_frames_where_die_moved():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=reader,
         logger=ListLogger(),
-        report=lambda _: None,
+        emit=lambda _: None,
     )
     assert reader.frames
     from towereye.topface import die_blob
@@ -142,7 +142,7 @@ def test_run_watch_ignores_post_settle_frames_where_die_moved():
 
 
 def test_run_watch_asks_for_reroll_when_die_clipped_at_frame_edge():
-    lines = []
+    events = []
     logger = ListLogger()
 
     def edge_square(x):
@@ -156,9 +156,9 @@ def test_run_watch_asks_for_reroll_when_die_clipped_at_frame_edge():
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
-        report=lines.append,
+        emit=events.append,
     )
-    assert any("tray edge" in line for line in lines)
+    assert any(e["type"] == "reroll" for e in events)
     assert not logger.entries  # never read, never logged
 
 
@@ -174,3 +174,143 @@ def test_zoom_frames_at_1x_is_identity():
     f = np.arange(90 * 120 * 3, dtype=np.uint8).reshape(90, 120, 3)
     (out,) = _zoom_frames(iter([f]), 1.0)
     assert out is f
+
+
+def test_run_watch_emits_result_event():
+    events = []
+    logger = ListLogger()
+    run_watch(
+        frames=iter(_throw_frames()),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=logger,
+        emit=events.append,
+    )
+    results = [e for e in events if e["type"] == "result"]
+    assert len(results) == 1
+    assert results[0]["value"] == 7
+    assert results[0]["reader"] == "fixed"
+    assert results[0]["roll_id"] == "test-id"  # ListLogger returns "test-id"
+
+
+def test_run_watch_dedupes_resettle_of_unmoved_die():
+    events = []
+    logger = ListLogger()
+    # roll settles, then the same die re-settles (shadow flicker), then moves
+    throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
+    resettle = [_die_square(60)] * 3 + [_die_square(61)] * 2 + [_die_square(60)] * 10
+    fake_now = [0.0]
+    run_watch(
+        frames=iter(throw + resettle),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=logger,
+        emit=events.append,
+        clock=lambda: fake_now[0],
+    )
+    assert len([e for e in events if e["type"] == "result"]) == 1
+    assert len(logger.entries) == 1
+
+
+def test_run_watch_reports_again_after_cooldown_expires():
+    events = []
+    # Clock returns 0.0 first time (first settle), then 100.0+ (well past cooldown)
+    times = [0.0, 100.0, 100.0, 100.0]
+    idx = [0]
+
+    def clock():
+        val = times[idx[0]]
+        idx[0] = min(idx[0] + 1, len(times) - 1)
+        return val
+
+    # First: throw and settle at position 60
+    throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
+    # Second: large movement to position 0, then back to 60 to trigger a new settle
+    resettle = [_die_square(0)] * 20 + [_die_square(60)] * 10
+    run_watch(
+        frames=iter(throw + resettle),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=ListLogger(),
+        emit=events.append,
+        clock=clock,
+    )
+    assert len([e for e in events if e["type"] == "result"]) == 2
+
+
+def test_format_event_matches_console_lines():
+    from towereye.cli import format_event
+
+    assert format_event(
+        {"type": "result", "roll_id": "x", "value": 17, "confidence": 0.95, "reader": "keypoints"}
+    ) == "You rolled 17 (keypoints, 0.95)"
+    assert format_event({"type": "unread", "roll_id": "x"}) == (
+        "Could not read the die - check lighting/framing"
+    )
+    assert format_event({"type": "reroll", "reason": "tray-edge"}) == (
+        "Die is at the tray edge - reroll"
+    )
+    assert format_event({"type": "timeout"}) == (
+        "Die never settled (cocked or bounced out?) - re-roll"
+    )
+
+
+def test_fan_out_prints_and_broadcasts(capsys):
+    from towereye.cli import _fan_out
+
+    class FakeHub:
+        def __init__(self):
+            self.events = []
+
+        def broadcast(self, e):
+            self.events.append(e)
+
+    hub = FakeHub()
+    emit = _fan_out(hub, ListLogger())
+    event = {"type": "result", "roll_id": "r", "value": 4, "confidence": 0.95, "reader": "keypoints"}
+    emit(event)
+    assert hub.events == [event]
+    assert "You rolled 4" in capsys.readouterr().out
+
+
+def test_fan_out_without_hub_still_prints(capsys):
+    from towereye.cli import _fan_out
+
+    emit = _fan_out(None, ListLogger())
+    emit({"type": "timeout"})
+    assert "never settled" in capsys.readouterr().out
+
+
+def test_confirm_harvests_template_until_cap(tmp_path):
+    import cv2
+
+    from towereye.cli import _harvest_on_confirm
+    from towereye.datalog import RollLogger
+
+    logger = RollLogger(tmp_path / "dataset")
+    frame = np.zeros((300, 300, 3), dtype=np.uint8)
+    frame[110:190, 110:190] = (255, 120, 100)  # a die blob so save_template crops
+    logger.log(frame, None)  # writes dataset/frames/<id>.png
+    roll_id = __import__("json").loads(
+        (tmp_path / "dataset" / "rolls.jsonl").read_text().splitlines()[0]
+    )["id"]
+
+    tdir = tmp_path / "templates"
+    on_confirm = _harvest_on_confirm(logger, template_dir=tdir, max_per_face=1)
+    on_confirm(roll_id, 17)
+    assert len(list(tdir.glob("17_*.png"))) == 1
+    on_confirm(roll_id, 17)  # cap reached: no second template
+    assert len(list(tdir.glob("17_*.png"))) == 1
+    # and the confirmation rows were written regardless
+    rows = (tmp_path / "dataset" / "rolls.jsonl").read_text().splitlines()
+    assert sum('"event": "confirm"' in r for r in rows) == 2
+
+
+def test_confirm_with_missing_frame_only_logs(tmp_path):
+    from towereye.cli import _harvest_on_confirm
+    from towereye.datalog import RollLogger
+
+    logger = RollLogger(tmp_path / "dataset")
+    on_confirm = _harvest_on_confirm(logger, template_dir=tmp_path / "templates")
+    on_confirm("no-such-roll", 4)  # must not raise
+    assert '"confirmed": 4' in (tmp_path / "dataset" / "rolls.jsonl").read_text()
