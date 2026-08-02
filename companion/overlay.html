@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>towereye overlay</title>
+<style>
+  /* Transparent OBS browser source; size the source 1920x1080. Everything
+     anchors to the bottom-center lower third. */
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: transparent; overflow: hidden; width: 100%; height: 100%; }
+  body { font: 600 24px/1.3 -apple-system, "SF Pro Display", "Segoe UI", sans-serif; }
+
+  #stage {
+    position: absolute; left: 0; right: 0; bottom: 6%;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    pointer-events: none;
+  }
+
+  .chip {
+    background: rgba(16, 20, 26, .82); color: #e6ebf2;
+    padding: 10px 26px; border-radius: 999px; letter-spacing: .4px;
+    opacity: 0; transform: translateY(18px);
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  .chip.show { opacity: 1; transform: translateY(0); }
+  .chip.quiet { font-size: 18px; color: #aab6c6; }
+
+  #result {
+    display: none; align-items: center; justify-content: center;
+    width: 148px; height: 148px; border-radius: 50%;
+    background: rgba(16, 20, 26, .88); color: #fff;
+    font-size: 72px; font-weight: 800;
+    border: 5px solid #5b9bd5;
+  }
+  #result.keypoints { border-color: #4caf7d; }
+  #result.apple_vision { border-color: #5b9bd5; }
+  #result.haiku { border-color: #e0a93e; }
+  #result.show { display: flex; animation: pop .45s cubic-bezier(.2, 1.6, .4, 1); }
+  #result.nat20 { border-color: #f5c542; color: #f5c542; box-shadow: 0 0 46px #f5c54288; }
+  #result.nat1 { border-color: #d06060; color: #d06060; animation: slam .5s ease-out; }
+  @keyframes pop { from { transform: scale(.3); } to { transform: scale(1); } }
+  @keyframes slam {
+    0% { transform: scale(2.2); opacity: 0; }
+    60% { transform: scale(.92); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  #natline { display: none; font-size: 40px; font-weight: 800; letter-spacing: 2px;
+             text-shadow: 0 2px 14px rgba(0,0,0,.6); }
+  #natline.gold { display: block; color: #f5c542; animation: pop .45s ease-out; }
+  #natline.doom { display: block; color: #d06060; animation: slam .5s ease-out; }
+
+  .particle {
+    position: absolute; width: 10px; height: 10px; border-radius: 2px;
+    background: #f5c542; pointer-events: none;
+    animation: burst 1.1s ease-out forwards;
+  }
+  @keyframes burst {
+    from { transform: translate(0, 0) rotate(0); opacity: 1; }
+    to { transform: translate(var(--dx), var(--dy)) rotate(540deg); opacity: 0; }
+  }
+
+  #conn { position: absolute; right: 12px; bottom: 10px; width: 8px; height: 8px;
+          border-radius: 50%; background: #d06060; opacity: .55; }
+  #conn.on { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="natline"></div>
+  <div id="result"></div>
+  <div id="armed" class="chip"></div>
+  <div id="note" class="chip quiet"></div>
+</div>
+<div id="conn"></div>
+
+<script>
+(function () {
+  "use strict";
+  const port = new URLSearchParams(location.search).get("port") || "8777";
+  const HUB = `ws://127.0.0.1:${port}`;
+  const RESULT_HOLD_MS = 6000;
+  const NOTE_HOLD_MS = 4500;
+  const $ = (id) => document.getElementById(id);
+  let hideResult = null;
+  let hideNote = null;
+
+  function showArmed(label, die) {
+    const a = $("armed");
+    a.textContent = `Rolling: ${label || "roll"} (${die || "d20"})`;
+    a.classList.add("show");
+  }
+
+  function clearResult() {
+    $("result").className = "";
+    $("natline").className = "";
+    $("natline").textContent = "";
+  }
+
+  function showResult(e) {
+    clearTimeout(hideResult);
+    clearResult();
+    const r = $("result");
+    r.textContent = e.value;
+    r.className = `show ${e.reader || ""}`;
+    $("armed").classList.remove("show");
+    if (e.value === 20) {
+      r.classList.add("nat20");
+      const n = $("natline");
+      n.textContent = "NAT 20!";
+      n.className = "gold";
+      confetti();
+    } else if (e.value === 1) {
+      r.classList.add("nat1");
+      const n = $("natline");
+      n.textContent = "NAT 1…";
+      n.className = "doom";
+    }
+    hideResult = setTimeout(clearResult, RESULT_HOLD_MS);
+  }
+
+  function showNote(text) {
+    clearTimeout(hideNote);
+    const n = $("note");
+    n.textContent = text;
+    n.classList.add("show");
+    hideNote = setTimeout(() => n.classList.remove("show"), NOTE_HOLD_MS);
+  }
+
+  function confetti() {
+    const stage = $("stage");
+    const origin = $("result").getBoundingClientRect();
+    const cx = origin.left + origin.width / 2;
+    const cy = origin.top + origin.height / 2;
+    const colors = ["#f5c542", "#e6ebf2", "#4caf7d", "#5b9bd5"];
+    for (let i = 0; i < 46; i++) {
+      const p = document.createElement("div");
+      p.className = "particle";
+      const angle = Math.random() * 2 * Math.PI;
+      const dist = 120 + Math.random() * 260;
+      p.style.left = `${cx}px`;
+      p.style.top = `${cy}px`;
+      p.style.background = colors[i % colors.length];
+      p.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
+      p.style.setProperty("--dy", `${Math.sin(angle) * dist - 80}px`);
+      document.body.appendChild(p);
+      setTimeout(() => p.remove(), 1200);
+    }
+  }
+
+  function handle(e) {
+    if (e.type === "armed") showArmed(e.label, e.die);
+    else if (e.type === "result") showResult(e);
+    else if (e.type === "reroll") showNote("die at tray edge - reroll");
+    else if (e.type === "timeout") showNote("never settled - reroll");
+    else if (e.type === "unread") showNote("camera couldn't read it");
+  }
+
+  function connect() {
+    const ws = new WebSocket(HUB);
+    ws.onopen = () => $("conn").classList.add("on");
+    ws.onclose = () => { $("conn").classList.remove("on"); setTimeout(connect, 3000); };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (m) => {
+      let e; try { e = JSON.parse(m.data); } catch { return; }
+      if (e.type === "history") return; // overlay shows live action only
+      handle(e);
+    };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>
