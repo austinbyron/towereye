@@ -17,18 +17,23 @@ class Hub:
         self._thread: threading.Thread | None = None
         self._started = threading.Event()
         self._stop_event: asyncio.Event | None = None
+        self._error: Exception | None = None
 
     def start_in_thread(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        self._started.wait(timeout=5)
+        if not self._started.wait(timeout=5) or self._error is not None:
+            raise RuntimeError(f"hub failed to start on port {self.port}: {self._error}")
 
     def _run(self) -> None:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         try:
             self._loop.run_until_complete(self._serve())
+        except Exception as exc:
+            self._error = exc
         finally:
+            self._started.set()
             self._loop.close()
 
     async def _serve(self) -> None:
@@ -51,7 +56,10 @@ class Hub:
                 kind = msg.get("type")
                 if kind == "arm":
                     if self.on_arm is not None:
-                        self.on_arm(msg)
+                        try:
+                            self.on_arm(msg)
+                        except Exception:
+                            pass
                     await self._send_all({
                         "type": "armed",
                         "label": msg.get("label"),
@@ -59,7 +67,10 @@ class Hub:
                     })
                 elif kind == "confirm":
                     if self.on_confirm is not None and "roll_id" in msg and "value" in msg:
-                        self.on_confirm(msg["roll_id"], int(msg["value"]))
+                        try:
+                            self.on_confirm(msg["roll_id"], int(msg["value"]))
+                        except Exception:
+                            pass
         finally:
             self._clients.discard(ws)
 
@@ -72,13 +83,19 @@ class Hub:
                 self._clients.discard(ws)
 
     def broadcast(self, event: dict) -> None:
-        if self._loop is None:
+        if self._loop is None or self._loop.is_closed():
             return
-        asyncio.run_coroutine_threadsafe(self._send_all(event), self._loop)
+        try:
+            asyncio.run_coroutine_threadsafe(self._send_all(event), self._loop)
+        except RuntimeError:
+            pass
 
     def stop(self) -> None:
-        if self._loop is not None and self._stop_event is not None:
-            self._loop.call_soon_threadsafe(self._stop_event.set)
+        if self._loop is not None and not self._loop.is_closed() and self._stop_event is not None:
+            try:
+                self._loop.call_soon_threadsafe(self._stop_event.set)
+            except RuntimeError:
+                pass
         if self._thread is not None:
             self._thread.join(timeout=2)
 

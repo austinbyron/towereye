@@ -205,10 +205,14 @@ def cmd_watch(args) -> int:
     if not args.no_hub:
         from .hub import Hub
 
-        hub = Hub(port=args.hub_port)
-        hub.on_confirm = _harvest_on_confirm(logger)
-        hub.start_in_thread()
-        print(f"Hub listening on ws://127.0.0.1:{hub.port}")
+        try:
+            hub = Hub(port=args.hub_port)
+            hub.on_confirm = _harvest_on_confirm(logger)
+            hub.start_in_thread()
+            print(f"Hub listening on ws://127.0.0.1:{hub.port}")
+        except Exception as exc:
+            print(f"Hub unavailable ({exc}); continuing without it")
+            hub = None
     print(f"Watching for rolls (log dir: {args.log_dir}). Ctrl-C to stop.")
     frames = _zoom_frames(_source_from_args(args).frames(), args.zoom)
     if args.preview:

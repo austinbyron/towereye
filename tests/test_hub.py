@@ -57,6 +57,22 @@ async def test_garbage_does_not_kill_connection(hub):
         assert msg["type"] == "timeout"
 
 
+def test_occupied_port_raises_promptly():
+    first = Hub(port=0)
+    first.start_in_thread()
+    try:
+        second = Hub(port=first.port)
+        with pytest.raises(RuntimeError):
+            second.start_in_thread()
+    finally:
+        first.stop()
+
+
+def test_broadcast_after_stop_is_noop(hub):
+    hub.stop()
+    hub.broadcast({"type": "timeout"})  # must not raise
+
+
 def test_demo_events_are_valid_hub_traffic():
     from towereye.hub import demo_events
 
