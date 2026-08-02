@@ -279,3 +279,38 @@ def test_fan_out_without_hub_still_prints(capsys):
     emit = _fan_out(None, ListLogger())
     emit({"type": "timeout"})
     assert "never settled" in capsys.readouterr().out
+
+
+def test_confirm_harvests_template_until_cap(tmp_path):
+    import cv2
+
+    from towereye.cli import _harvest_on_confirm
+    from towereye.datalog import RollLogger
+
+    logger = RollLogger(tmp_path / "dataset")
+    frame = np.zeros((300, 300, 3), dtype=np.uint8)
+    frame[110:190, 110:190] = (255, 120, 100)  # a die blob so save_template crops
+    logger.log(frame, None)  # writes dataset/frames/<id>.png
+    roll_id = __import__("json").loads(
+        (tmp_path / "dataset" / "rolls.jsonl").read_text().splitlines()[0]
+    )["id"]
+
+    tdir = tmp_path / "templates"
+    on_confirm = _harvest_on_confirm(logger, template_dir=tdir, max_per_face=1)
+    on_confirm(roll_id, 17)
+    assert len(list(tdir.glob("17_*.png"))) == 1
+    on_confirm(roll_id, 17)  # cap reached: no second template
+    assert len(list(tdir.glob("17_*.png"))) == 1
+    # and the confirmation rows were written regardless
+    rows = (tmp_path / "dataset" / "rolls.jsonl").read_text().splitlines()
+    assert sum('"event": "confirm"' in r for r in rows) == 2
+
+
+def test_confirm_with_missing_frame_only_logs(tmp_path):
+    from towereye.cli import _harvest_on_confirm
+    from towereye.datalog import RollLogger
+
+    logger = RollLogger(tmp_path / "dataset")
+    on_confirm = _harvest_on_confirm(logger, template_dir=tmp_path / "templates")
+    on_confirm("no-such-roll", 4)  # must not raise
+    assert '"confirmed": 4' in (tmp_path / "dataset" / "rolls.jsonl").read_text()

@@ -70,6 +70,23 @@ def _fan_out(hub, logger) -> Callable[[dict], None]:
     return emit
 
 
+def _harvest_on_confirm(logger, template_dir="templates", max_per_face=6):
+    from .keypoints import save_template
+
+    def on_confirm(roll_id: str, value: int) -> None:
+        logger.confirm(roll_id, value)
+        path = logger.frame_path(roll_id)
+        if not path.exists():
+            return
+        if len(list(Path(template_dir).glob(f"{value}_*.png"))) >= max_per_face:
+            return
+        frame = cv2.imread(str(path))
+        if frame is not None:
+            save_template(frame, value, template_dir)
+
+    return on_confirm
+
+
 def run_watch(
     frames: Iterator[np.ndarray],
     detector,
@@ -189,7 +206,7 @@ def cmd_watch(args) -> int:
         from .hub import Hub
 
         hub = Hub(port=args.hub_port)
-        hub.on_confirm = logger.confirm
+        hub.on_confirm = _harvest_on_confirm(logger)
         hub.start_in_thread()
         print(f"Hub listening on ws://127.0.0.1:{hub.port}")
     print(f"Watching for rolls (log dir: {args.log_dir}). Ctrl-C to stop.")
