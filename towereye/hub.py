@@ -1,0 +1,81 @@
+"""Localhost WebSocket hub: fans roll events out to companion/overlay clients
+and routes arm/confirm messages back to the watch loop."""
+import asyncio
+import json
+import threading
+
+import websockets
+
+
+class Hub:
+    def __init__(self, port: int = 8777):
+        self.port = port
+        self.on_arm = None
+        self.on_confirm = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._clients: set = set()
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+        self._stop_event: asyncio.Event | None = None
+
+    def start_in_thread(self) -> None:
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        self._started.wait(timeout=5)
+
+    def _run(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        try:
+            self._loop.run_until_complete(self._serve())
+        finally:
+            self._loop.close()
+
+    async def _serve(self) -> None:
+        self._stop_event = asyncio.Event()
+        async with websockets.serve(self._handler, "127.0.0.1", self.port) as server:
+            self.port = server.sockets[0].getsockname()[1]
+            self._started.set()
+            await self._stop_event.wait()  # run until stop() sets the event
+
+    async def _handler(self, ws) -> None:
+        self._clients.add(ws)
+        try:
+            async for raw in ws:
+                try:
+                    msg = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                kind = msg.get("type")
+                if kind == "arm":
+                    if self.on_arm is not None:
+                        self.on_arm(msg)
+                    await self._send_all({
+                        "type": "armed",
+                        "label": msg.get("label"),
+                        "die": msg.get("die"),
+                    })
+                elif kind == "confirm":
+                    if self.on_confirm is not None and "roll_id" in msg and "value" in msg:
+                        self.on_confirm(msg["roll_id"], int(msg["value"]))
+        finally:
+            self._clients.discard(ws)
+
+    async def _send_all(self, event: dict) -> None:
+        raw = json.dumps(event)
+        for ws in list(self._clients):
+            try:
+                await ws.send(raw)
+            except websockets.ConnectionClosed:
+                self._clients.discard(ws)
+
+    def broadcast(self, event: dict) -> None:
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._send_all(event), self._loop)
+
+    def stop(self) -> None:
+        if self._loop is not None and self._stop_event is not None:
+            self._loop.call_soon_threadsafe(self._stop_event.set)
+        if self._thread is not None:
+            self._thread.join(timeout=2)
