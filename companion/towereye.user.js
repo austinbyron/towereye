@@ -50,9 +50,13 @@
     const { input } = activeDialog;
     input.value = e.value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.style.outline = e.confidence >= 0.95 ? "2px solid #2e7d32" : "2px solid #f9a825";
+    if (Number.isFinite(e.confidence)) {
+      input.style.outline = e.confidence >= 0.95 ? "2px solid #2e7d32" : "2px solid #f9a825";
+      flag(`camera: ${e.value} (${e.reader} ${e.confidence.toFixed(2)}) - confirm or correct`);
+    } else {
+      flag(`camera: ${e.value} - confirm or correct`);
+    }
     activeDialog.rollId = e.roll_id;
-    flag(`camera: ${e.value} (${e.reader} ${e.confidence.toFixed(2)}) - confirm or correct`);
   }
 
   function flag(text) {
@@ -91,8 +95,10 @@
     if (submit) {
       submit.addEventListener("click", () => {
         if (activeDialog && activeDialog.rollId) {
-          send({ type: "confirm", roll_id: activeDialog.rollId,
-                 value: parseInt(input.value, 10) });
+          const v = parseInt(input.value, 10);
+          if (Number.isFinite(v)) {
+            send({ type: "confirm", roll_id: activeDialog.rollId, value: v });
+          }
         }
         activeDialog = null;
       }, { once: true });
