@@ -16,9 +16,19 @@ from .readers import Reading
 from .topface import topface_crop
 
 SIZE = 256          # working resolution for both templates and queries
-MIN_INLIERS = 15    # accept floor: geometric inliers against the best template
+# Accept floor swept on 22 labeled real rolls: answer rate plateaus at 8 and
+# stays wrong-free down to 4 — the MARGIN rule is the binding safety check.
+MIN_INLIERS = 8
 MARGIN = 2.0        # best value must beat the runner-up value by this factor
 RATIO = 0.75        # Lowe's ratio test for candidate matches
+MIN_SPREAD = 0.15   # inliers must span this fraction of the image both ways
+
+
+def _spread_ok(points: np.ndarray) -> bool:
+    """Reject collinear/clustered inlier sets: a straight shadow edge can
+    'match' another straight edge with a consistent affine fit."""
+    spread = points.max(axis=0) - points.min(axis=0)
+    return bool(min(spread) >= MIN_SPREAD * SIZE)
 
 
 class KeypointReader:
@@ -50,7 +60,12 @@ class KeypointReader:
         src = np.float32([kp1[m.queryIdx].pt for m in good])
         dst = np.float32([kp2[m.trainIdx].pt for m in good])
         _, mask = cv2.estimateAffinePartial2D(src, dst, ransacReprojThreshold=4.0)
-        return int(mask.sum()) if mask is not None else 0
+        if mask is None:
+            return 0
+        inliers = src[mask.ravel().astype(bool)]
+        if len(inliers) < 4 or not _spread_ok(inliers):
+            return 0
+        return int(mask.sum())
 
     def read(self, frame: np.ndarray) -> Reading | None:
         if not self.templates:

@@ -41,6 +41,15 @@ def test_no_templates_reads_none(tmp_path):
     assert reader.read(_textured(1)) is None
 
 
+def test_spread_guard_rejects_collinear_inliers():
+    from towereye.keypoints import _spread_ok
+
+    line = np.float32([[10, 128], [80, 128], [150, 129], [220, 128]])
+    scattered = np.float32([[40, 40], [200, 60], [60, 210], [190, 200]])
+    assert not _spread_ok(line)
+    assert _spread_ok(scattered)
+
+
 def test_save_template_crops_and_numbers_files(tmp_path):
     frame = np.zeros((200, 200, 3), dtype=np.uint8)
     frame[60:140, 60:140] = (255, 120, 100)
