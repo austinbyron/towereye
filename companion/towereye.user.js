@@ -89,18 +89,19 @@
     const labelNode = node.querySelector(CONFIG.labelSelector);
     const label = labelNode ? labelNode.textContent.trim() : "roll";
     activeDialog = { node, input, rollId: null };
+    const dialog = activeDialog;
     log("armed for", label);
     send({ type: "arm", label, die: "d20" });
     const submit = node.querySelector(CONFIG.submitSelector);
     if (submit) {
       submit.addEventListener("click", () => {
-        if (activeDialog && activeDialog.rollId) {
+        if (activeDialog === dialog && dialog.rollId) {
           const v = parseInt(input.value, 10);
           if (Number.isFinite(v)) {
-            send({ type: "confirm", roll_id: activeDialog.rollId, value: v });
+            send({ type: "confirm", roll_id: dialog.rollId, value: v });
           }
         }
-        activeDialog = null;
+        if (activeDialog === dialog) activeDialog = null;
       }, { once: true });
     }
   }

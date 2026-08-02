@@ -14,3 +14,4 @@
 5. Correct the value if wrong, submit. Check `dataset/rolls.jsonl` gained a confirm row, and `templates/` gained a file if that face was under the cap.
 6. Roll20 chat shows the labeled roll via Beyond20's native template.
 7. Kill the watch process mid-dialog: manual typing still works (degrades to stock Beyond20).
+8. Note: templates harvested from confirms load at startup - restart watch for them to take effect.
