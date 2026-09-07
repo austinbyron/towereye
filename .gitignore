@@ -11,3 +11,5 @@ companion/desktop/node_modules/
 .towereye-watch.log
 companion/desktop/dist/
 .towereye-watch.pid
+.DS_Store
+golden/

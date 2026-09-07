@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Repo: `/Users/austinbyron/CodeProjects/towereye` (already exists, git initialized on `master`, contains `docs/` only).
+- Repo: `~/CodeProjects/towereye` (already exists, git initialized on `master`, contains `docs/` only).
 - Python: create venv with `python3.12` (system python3.13 not required; torch is irrelevant — never add it).
 - Haiku model id: exactly `claude-haiku-4-5`. Auth via `ANTHROPIC_API_KEY` env var (standard SDK resolution).
 - Die values are integers 1–20; a reading outside that range is invalid.
@@ -53,7 +53,7 @@ dataset/
 
 Run:
 ```bash
-cd /Users/austinbyron/CodeProjects/towereye
+cd ~/CodeProjects/towereye
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
