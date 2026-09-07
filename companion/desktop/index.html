@@ -78,14 +78,20 @@
   }
 
   function setRunning(on) {
+    const changed = on !== running;
     running = on;
     $("dotWatch").className = "dot" + (on ? " on" : "");
-    $("start").disabled = on || selected === null;
+    // Start is always allowed once a camera is chosen: it replaces a running watch
+    $("start").disabled = selected === null;
+    $("start").textContent = on ? "Restart watching" : "Start watching";
     $("stop").disabled = !on;
     $("scan").disabled = on;
-    $("feed").classList.toggle("on", on);
-    if (on) $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
-    else $("feed").removeAttribute("src");
+    $("scanNote").textContent = on ? "stop the watch to rescan (it owns the camera)" : "pick the one that shows the tray";
+    if (changed || (on && !$("feed").src)) {
+      $("feed").classList.toggle("on", on);
+      if (on) $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
+      else $("feed").removeAttribute("src");
+    }
   }
 
   function renderCams(cams) {
@@ -100,7 +106,7 @@
         localStorage.setItem("camera", JSON.stringify(selected));
         document.querySelectorAll(".cam").forEach((n) => n.classList.remove("selected"));
         card.classList.add("selected");
-        $("start").disabled = running;
+        $("start").disabled = false;
       };
       grid.appendChild(card);
     }
@@ -151,16 +157,6 @@
     try {
       const r = await fetch(`${STREAM}/frame.jpg`, { cache: "no-store" });
       $("dotStream").className = "dot" + (r.ok ? " on" : "");
-      if (r.ok && !running) {
-        // a watch started from a terminal owns the camera; don't fight it
-        $("envNote").textContent = "a watch is already running outside this app";
-        $("start").disabled = true;
-        $("feed").classList.add("on");
-        if (!$("feed").src) $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
-      } else if (!r.ok && !running) {
-        $("envNote").textContent = "";
-        $("start").disabled = selected === null;
-      }
     } catch { $("dotStream").className = "dot"; }
     setTimeout(pollStream, 3000);
   }
@@ -169,7 +165,7 @@
   window.towereye.env().then((env) => {
     if (!env.pythonOk) { $("envNote").textContent = `no .venv in ${env.repo}`; $("start").disabled = true; }
     setRunning(env.running);
-    if (selected !== null) $("scanNote").textContent = `remembered camera index ${selected} — scan to confirm`;
+    if (selected !== null && !env.running) $("scanNote").textContent = `remembered camera index ${selected} — scan to confirm`;
   });
 })();
 </script>

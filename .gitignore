@@ -8,3 +8,4 @@ dataset/
 templates/
 captures/
 companion/desktop/node_modules/
+.towereye-watch.log
