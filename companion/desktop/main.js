@@ -7,7 +7,10 @@ const { spawn, execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-const REPO = path.resolve(__dirname, "..", "..");
+const os = require("os");
+// Packaged app lives in /Applications; the Python side stays in the repo checkout.
+const REPO = process.env.TOWEREYE_REPO
+  || (app.isPackaged ? path.join(os.homedir(), "CodeProjects", "towereye") : path.resolve(__dirname, "..", ".."));
 const PYTHON = path.join(REPO, ".venv", "bin", "python");
 const LOG = path.join(REPO, ".towereye-watch.log");
 const PORTS = [8777, 8778];
@@ -88,8 +91,17 @@ ipcMain.handle("cameras", async () => {
   });
 });
 
-ipcMain.handle("start", async (_e, { camera }) => {
+function openObs() {
+  // `open -a` activates OBS if it is already running; the flag only applies
+  // on a cold start, which is the case that matters (virtual camera armed).
+  if (!fs.existsSync("/Applications/OBS.app")) { send("log", "OBS not found in /Applications"); return; }
+  spawn("open", ["-a", "OBS", "--args", "--startvirtualcam"], { detached: true, stdio: "ignore" }).unref();
+  send("log", "opened OBS with the virtual camera started");
+}
+
+ipcMain.handle("start", async (_e, { camera, obs }) => {
   if (await stopWatch()) send("log", "replaced the watch that was holding the ports");
+  if (obs) openObs();
   fs.writeFileSync(LOG, "");
   logOffset = 0;
   const out = fs.openSync(LOG, "a");

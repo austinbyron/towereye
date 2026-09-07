@@ -9,3 +9,4 @@ templates/
 captures/
 companion/desktop/node_modules/
 .towereye-watch.log
+companion/desktop/dist/

@@ -50,6 +50,7 @@
 <section class="row">
   <button id="start" class="primary" disabled>Start watching</button>
   <button id="stop" class="danger" disabled>Stop</button>
+  <label class="muted" style="margin-left:auto"><input type="checkbox" id="obs"> open OBS + virtual cam</label>
 </section>
 
 <section>
@@ -123,8 +124,10 @@
     renderCams(res.cameras);
   };
 
+  try { $("obs").checked = localStorage.getItem("obs") === "1"; } catch {}
+  $("obs").onchange = () => localStorage.setItem("obs", $("obs").checked ? "1" : "0");
   $("start").onclick = async () => {
-    const res = await window.towereye.start(selected);
+    const res = await window.towereye.start(selected, $("obs").checked);
     if (!res.ok) log(res.error);
   };
   $("stop").onclick = () => window.towereye.stop();

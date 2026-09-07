@@ -4,10 +4,24 @@ A small window that starts/stops the watch, lets you pick the tray camera by
 what it sees, and mirrors the live feed, hub/stream status, and the last roll.
 The Python watch stays the source of truth; this is only a remote control.
 
-## Run
+## Run (dev)
 
     cd companion/desktop && npm install   # once
     npm start
+
+## Build + install as a Mac app
+
+    cd companion/desktop
+    npx @electron/packager . towereye --platform=darwin --arch=x64 --out=dist --overwrite --ignore="dist|build/icon.iconset|build/icon_1024.png"
+    cp build/icon.icns dist/towereye-darwin-x64/towereye.app/Contents/Resources/electron.icns
+    rm -rf /Applications/towereye.app && cp -R dist/towereye-darwin-x64/towereye.app /Applications/
+
+The packaged app expects the repo at `~/CodeProjects/towereye` (override with
+the `TOWEREYE_REPO` env var). The icon is drawn by a small OpenCV script
+(`build/icon_1024.png` → `iconutil` → `build/icon.icns`).
+
+"open OBS + virtual cam" on Start launches `/Applications/OBS.app` with
+`--startvirtualcam`, so Discord's camera is live without touching OBS.
 
 ## Use
 
