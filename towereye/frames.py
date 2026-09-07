@@ -49,7 +49,13 @@ class CameraSource:
     def frames(self) -> Iterator[np.ndarray]:
         cap = self._open(self.spec)
         if not cap.isOpened():
-            raise RuntimeError(f"could not open camera source {self.spec!r}")
+            # a camera just released by another process (or a phone waking
+            # up) can take a few seconds to become openable again
+            cap.release()
+            self._log(f"camera {self.spec!r} not available yet; waiting for it...")
+            cap = self._reconnect()
+            if cap is None:
+                raise RuntimeError(f"could not open camera source {self.spec!r}")
         try:
             while True:
                 ok, frame = cap.read()

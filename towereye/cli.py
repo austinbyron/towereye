@@ -207,7 +207,19 @@ def _preview_frames(frames: Iterator[np.ndarray]) -> Iterator[np.ndarray]:
         cv2.destroyAllWindows()
 
 
+PID_FILE = Path(".towereye-watch.pid")
+
+
 def cmd_watch(args) -> int:
+    PID_FILE.write_text(str(os.getpid()))
+    try:
+        return _cmd_watch(args)
+    finally:
+        if PID_FILE.exists() and PID_FILE.read_text().strip() == str(os.getpid()):
+            PID_FILE.unlink()
+
+
+def _cmd_watch(args) -> int:
     chain = _build_chain()
     logger = RollLogger(args.log_dir)
     hub = None
@@ -220,6 +232,9 @@ def cmd_watch(args) -> int:
             hub.start_in_thread()
             print(f"Hub listening on ws://127.0.0.1:{hub.port}")
         except Exception as exc:
+            if "already in use" in str(exc).lower():
+                print("Another watch already holds the hub port; not starting a duplicate.")
+                return 2
             print(f"Hub unavailable ({exc}); continuing without it")
             hub = None
     stream = None

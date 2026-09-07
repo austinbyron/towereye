@@ -13,6 +13,7 @@ const REPO = process.env.TOWEREYE_REPO
   || (app.isPackaged ? path.join(os.homedir(), "CodeProjects", "towereye") : path.resolve(__dirname, "..", ".."));
 const PYTHON = path.join(REPO, ".venv", "bin", "python");
 const LOG = path.join(REPO, ".towereye-watch.log");
+const PIDFILE = path.join(REPO, ".towereye-watch.pid");
 const PORTS = [8777, 8778];
 
 let win = null;
@@ -22,15 +23,33 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
-function pidsOnPorts() {
-  const pids = new Set();
-  for (const port of PORTS) {
-    try {
-      const out = execFileSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
-      out.split(/\s+/).filter(Boolean).forEach((p) => pids.add(Number(p)));
-    } catch { /* nothing listening */ }
-  }
+function alive(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function watchPids() {
+  // the pid file covers a watch that is still booting (ports not bound yet)
+  const pids = new Set(pidsOnPorts());
+  try {
+    const pid = Number(fs.readFileSync(PIDFILE, "utf8").trim());
+    if (pid && alive(pid)) pids.add(pid);
+  } catch { /* no pid file */ }
   return [...pids];
+}
+
+function listeners(port) {
+  try {
+    const out = execFileSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
+    return out.split(/\s+/).filter(Boolean).map(Number);
+  } catch { return []; }
+}
+
+function pidsOnPorts() {
+  return [...new Set(PORTS.flatMap(listeners))];
+}
+
+function portsBound() {
+  return PORTS.filter((p) => listeners(p).length).length;
 }
 
 function killPids(pids, signal) {
@@ -40,13 +59,15 @@ function killPids(pids, signal) {
 }
 
 async function stopWatch() {
-  const pids = pidsOnPorts();
+  const pids = watchPids();
   if (!pids.length) return false;
   killPids(pids, "SIGINT");
-  for (let i = 0; i < 20 && pidsOnPorts().length; i++) await new Promise((r) => setTimeout(r, 250));
-  if (pidsOnPorts().length) killPids(pidsOnPorts(), "SIGKILL");
+  for (let i = 0; i < 20 && watchPids().length; i++) await new Promise((r) => setTimeout(r, 250));
+  if (watchPids().length) killPids(watchPids(), "SIGKILL");
   return true;
 }
+
+let starting = false;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -75,10 +96,10 @@ function tailLog() {
   } catch { /* no log yet */ }
 }
 
-ipcMain.handle("env", () => ({ repo: REPO, pythonOk: fs.existsSync(PYTHON), running: pidsOnPorts().length > 0 }));
+ipcMain.handle("env", () => ({ repo: REPO, pythonOk: fs.existsSync(PYTHON), running: watchPids().length > 0 }));
 
 ipcMain.handle("cameras", async () => {
-  if (pidsOnPorts().length) return { error: "stop the watch before scanning: it owns the camera" };
+  if (watchPids().length) return { error: "stop the watch before scanning: it owns the camera" };
   return new Promise((resolve) => {
     const p = spawn(PYTHON, ["-m", "towereye", "cameras", "--json"], { cwd: REPO });
     let out = "";
@@ -100,8 +121,23 @@ function openObs() {
 }
 
 ipcMain.handle("start", async (_e, { camera, obs }) => {
-  if (await stopWatch()) send("log", "replaced the watch that was holding the ports");
-  if (obs) openObs();
+  if (starting) return { ok: false, error: "already starting" };
+  starting = true;
+  send("state", { running: true, starting: true });
+  try {
+    if (await stopWatch()) send("log", "replaced the running watch");
+    if (obs) openObs();
+    return startWatch(camera);
+  } finally {
+    // hold Start until the ports are bound (or 15s), so a double click can't
+    // launch a duplicate that loses the camera race
+    for (let i = 0; i < 60 && portsBound() < PORTS.length; i++) await new Promise((r) => setTimeout(r, 250));
+    starting = false;
+    send("state", { running: watchPids().length > 0, starting: false });
+  }
+});
+
+function startWatch(camera) {
   fs.writeFileSync(LOG, "");
   logOffset = 0;
   const out = fs.openSync(LOG, "a");
@@ -113,9 +149,8 @@ ipcMain.handle("start", async (_e, { camera, obs }) => {
   });
   child.unref();
   fs.closeSync(out);
-  send("state", { running: true, camera });
   return { ok: true, pid: child.pid };
-});
+}
 
 ipcMain.handle("stop", async () => {
   const stopped = await stopWatch();
@@ -127,7 +162,7 @@ app.whenReady().then(() => {
   createWindow();
   setInterval(() => {
     tailLog();
-    send("state", { running: pidsOnPorts().length > 0 });
+    if (!starting) send("state", { running: watchPids().length > 0, starting: false });
   }, 1000);
 });
 app.on("window-all-closed", () => app.quit()); // the watch keeps running

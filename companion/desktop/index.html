@@ -78,14 +78,15 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  function setRunning(on) {
+  function setRunning(on, starting) {
     const changed = on !== running;
     running = on;
-    $("dotWatch").className = "dot" + (on ? " on" : "");
-    // Start is always allowed once a camera is chosen: it replaces a running watch
-    $("start").disabled = selected === null;
-    $("start").textContent = on ? "Restart watching" : "Start watching";
-    $("stop").disabled = !on;
+    $("dotWatch").className = "dot" + (on ? (starting ? " warn" : " on") : "");
+    // Start is always allowed once a camera is chosen (it replaces a running
+    // watch) except while one is still booting
+    $("start").disabled = selected === null || !!starting;
+    $("start").textContent = starting ? "Starting…" : on ? "Restart watching" : "Start watching";
+    $("stop").disabled = !on || !!starting;
     $("scan").disabled = on;
     $("scanNote").textContent = on ? "stop the watch to rescan (it owns the camera)" : "pick the one that shows the tray";
     if (changed || (on && !$("feed").src)) {
@@ -133,7 +134,7 @@
   $("stop").onclick = () => window.towereye.stop();
 
   window.towereye.onLog(log);
-  window.towereye.onState((s) => setRunning(s.running));
+  window.towereye.onState((s) => setRunning(s.running, s.starting));
 
   // hub: last roll + connection dot
   function connectHub() {
