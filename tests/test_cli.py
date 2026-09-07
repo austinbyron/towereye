@@ -199,41 +199,46 @@ def test_run_watch_dedupes_resettle_of_unmoved_die():
     # roll settles, then the same die re-settles (shadow flicker), then moves
     throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
     resettle = [_die_square(60)] * 3 + [_die_square(61)] * 2 + [_die_square(60)] * 10
-    fake_now = [0.0]
     run_watch(
         frames=iter(throw + resettle),
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=logger,
         emit=events.append,
-        clock=lambda: fake_now[0],
     )
     assert len([e for e in events if e["type"] == "result"]) == 1
     assert len(logger.entries) == 1
 
 
-def test_run_watch_reports_again_after_cooldown_expires():
+def test_run_watch_never_rereads_a_die_that_stays_put():
     events = []
-    # Clock returns 0.0 first time (first settle), then 100.0+ (well past cooldown)
-    times = [0.0, 100.0, 100.0, 100.0]
-    idx = [0]
-
-    def clock():
-        val = times[idx[0]]
-        idx[0] = min(idx[0] + 1, len(times) - 1)
-        return val
-
-    # First: throw and settle at position 60
     throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
-    # Second: large movement to position 0, then back to 60 to trigger a new settle
-    resettle = [_die_square(0)] * 20 + [_die_square(60)] * 10
+    # lights change / tower vibration: repeated re-settles in the same spot
+    flicker = ([_die_square(61)] * 2 + [_die_square(60)] * 10) * 4
     run_watch(
-        frames=iter(throw + resettle),
+        frames=iter(throw + flicker),
         detector=SettleDetector(settle_frames=3, timeout_frames=100),
         chain=FixedReader(7),
         logger=ListLogger(),
         emit=events.append,
-        clock=clock,
+    )
+    assert len([e for e in events if e["type"] == "result"]) == 1
+
+
+def test_run_watch_reports_again_after_die_leaves_and_returns():
+    events = []
+    empty = np.zeros((160, 240, 3), dtype=np.uint8)
+    throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
+    # hand drags the die out (motion, then an empty tray settles), then a new
+    # roll lands in the same spot; the still lead-in outlasts POST_SETTLE_FRAMES
+    lifted = [_die_square(60)] * 10 + [_die_square(x) for x in range(48, -1, -12)] + [empty] * 30
+    rethrow = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 10
+    run_watch(
+        frames=iter(throw + lifted + rethrow),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=ListLogger(),
+        emit=events.append,
     )
     assert len([e for e in events if e["type"] == "result"]) == 2
 

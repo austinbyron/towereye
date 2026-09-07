@@ -3,7 +3,6 @@ import argparse
 import itertools
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -21,8 +20,8 @@ from .topface import die_blob, sharpness
 # the sharpest STABLE one is read
 POST_SETTLE_FRAMES = 15
 
-# suppress duplicate settle reports if die hasn't moved and event is within this window
-DEDUP_SECONDS = 8.0
+# A die that re-settles in the same spot (shadow flicker, lights changing,
+# tower vibration) is never re-reported; only its leaving the tray re-arms.
 
 
 def _at_frame_edge(blob: tuple[float, float, float], frame: np.ndarray) -> bool:
@@ -94,14 +93,15 @@ def run_watch(
     logger,
     emit: Callable[[dict], None],
     presence: Callable[[np.ndarray], bool] = _watch_gate,
-    clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    last_read: tuple[tuple[float, float, float], float] | None = None  # (blob, when)
+    last_read: tuple[float, float, float] | None = None  # blob of the last reported die
     for frame in frames:
         result = detector.feed(frame)
         if result.state == SettleState.SETTLED:
             if not presence(result.frame):
-                # hand retrieval / empty-tray motion: re-arm quietly, don't log
+                # hand retrieval / empty-tray motion: re-arm quietly, don't log;
+                # the die has left, so the next settle anywhere is a new roll
+                last_read = None
                 detector.reset()
                 continue
             ref = die_blob(result.frame)
@@ -111,13 +111,8 @@ def run_watch(
                 emit({"type": "reroll", "reason": "tray-edge"})
                 detector.reset()
                 continue
-            if (
-                ref is not None
-                and last_read is not None
-                and clock() - last_read[1] < DEDUP_SECONDS
-                and _die_unmoved(last_read[0], result.frame)
-            ):
-                # same die, same spot, moments later: duplicate settle
+            if ref is not None and last_read is not None and _die_unmoved(last_read, result.frame):
+                # same die, same spot: a re-settle, not a roll
                 detector.reset()
                 continue
             candidates = [result.frame]
@@ -138,7 +133,7 @@ def run_watch(
             else:
                 emit({"type": "unread", "roll_id": roll_id})
             if ref is not None:
-                last_read = (ref, clock())
+                last_read = ref
             detector.reset()
         elif result.state == SettleState.TIMEOUT:
             emit({"type": "timeout"})
@@ -340,7 +335,7 @@ def main(argv=None) -> int:
     watch.add_argument("--camera", default="0", help="device index or stream URL")
     watch.add_argument("--video", help="video file instead of a live camera")
     watch.add_argument("--log-dir", default="dataset", help="roll dataset directory")
-    watch.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop)")
+    watch.add_argument("--zoom", type=float, default=1.0, help="digital zoom factor (center crop, 1.0 = full field)")
     watch.add_argument("--preview", action="store_true", help="show the live feed in a window")
     watch.add_argument("--hub-port", type=int, default=8777, help="WebSocket hub port")
     watch.add_argument("--no-hub", action="store_true", help="disable the WebSocket hub")
@@ -354,7 +349,7 @@ def main(argv=None) -> int:
     capture.add_argument("--camera", default="0", help="device index or stream URL")
     capture.add_argument("--video", help=argparse.SUPPRESS)
     capture.add_argument("--out-dir", default="captures")
-    capture.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop)")
+    capture.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop, 1.0 = full field)")
     capture.set_defaults(func=cmd_capture)
 
     bench = sub.add_parser("bench", help="score readers against labeled golden frames")
@@ -364,7 +359,7 @@ def main(argv=None) -> int:
     calibrate = sub.add_parser("calibrate", help="capture per-face keypoint templates")
     calibrate.add_argument("--camera", default="0", help="device index or stream URL")
     calibrate.add_argument("--video", help=argparse.SUPPRESS)
-    calibrate.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop)")
+    calibrate.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop, 1.0 = full field)")
     calibrate.add_argument("--out-dir", default="templates")
     calibrate.add_argument("--start", type=int, default=1, help="face value to start from")
     calibrate.set_defaults(func=cmd_calibrate)

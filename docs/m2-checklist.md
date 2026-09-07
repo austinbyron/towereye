@@ -14,8 +14,14 @@ After editing `companion/extension/content.js`, click the reload icon on the ext
 4. With DEBUG=true, check the console logs each demo event.
 
 ## Against the real rig
-1. `.venv/bin/python -m towereye watch --camera 1 --preview` — note "Hub listening on ws://127.0.0.1:8777".
-2. Open the DDB character sheet with Beyond20 manual rolls enabled; open a roll dialog.
+
+### Roll20 broadcast (primary path)
+1. `.venv/bin/python -m towereye watch --camera 1 --preview` and open the Roll20 game tab (extension loaded; reload the tab if it was open before the extension).
+2. Console shows "[towereye] hub connected". Drop a die: a roll card appears in Roll20 chat within a second or two, and the console logs "posted to roll20".
+3. History replay is never posted; a re-settled die that hasn't moved is never re-posted.
+
+### Beyond20 dialog fill (optional path)
+1. Open the DDB character sheet with Beyond20 manual rolls enabled; open a roll dialog.
 3. Console shows "armed for <label>"; if not, read the candidate-dialog DEBUG logs and pin CONFIG selectors.
 4. Drop a die. The dialog input fills with the value, green outline for keypoints/vision, yellow for haiku.
 5. Correct the value if wrong, submit. Check `dataset/rolls.jsonl` gained a confirm row, and `templates/` gained a file if that face was under the cap.
