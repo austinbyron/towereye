@@ -28,6 +28,10 @@ def die_blob(frame: np.ndarray) -> tuple[float, float, float] | None:
     return float(cx), float(cy), radius
 
 
+NEUTRAL_FLOOR = 40       # never demand less neutrality than the original absolute cutoff
+NEUTRAL_BODY_FRAC = 0.5
+
+
 def lettering(img: np.ndarray) -> np.ndarray:
     """Gray image masked to the white numerals; body, swirl, and glare dropped.
 
@@ -38,7 +42,14 @@ def lettering(img: np.ndarray) -> np.ndarray:
     b, g, r = cv2.split(img.astype(np.int16))
     blue_shift = b - r
     bright = np.minimum(np.minimum(b, g), r)
-    neutral = blue_shift < 40
+    # Paint is far less blue-shifted than the body, but the absolute shift
+    # depends on the room's white balance (numerals read B-R~25 in one room,
+    # ~64 under warm lamps), so split the crop's own shift distribution:
+    # Otsu between the paint and body modes, capped below the body median.
+    shift8 = np.clip(blue_shift, 0, 255).astype(np.uint8)
+    otsu, _ = cv2.threshold(shift8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    cutoff = min(otsu, NEUTRAL_BODY_FRAC * float(np.median(blue_shift)))
+    neutral = blue_shift < max(cutoff, NEUTRAL_FLOOR)
     if neutral.sum() < 50:
         return np.zeros(img.shape[:2], np.uint8)
     thresh = max(60, int(np.percentile(bright[neutral], 75)) - 30)
