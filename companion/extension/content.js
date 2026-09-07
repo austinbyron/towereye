@@ -10,7 +10,7 @@
     inputSelector: "input[type='number'], input[type='text']",
     labelSelector: ".beyond20-roll-title, h3, h4",
     submitSelector: "button[type='submit'], .beyond20-roll-button",
-    DEBUG: true,
+    DEBUG: false, // true: console logging + reader/confidence on the Roll20 card
     reconnectMs: 3000,
     // Roll20 VTT chat: every live camera result is posted here as a roll card,
     // no dialog needed. Selectors are Roll20's long-stable chat markup.
@@ -52,8 +52,8 @@
     if (!input || !send) { log("roll20 chat not found"); return; }
     posted.add(e.roll_id);
     const conf = Number.isFinite(e.confidence) ? ` ${e.confidence.toFixed(2)}` : "";
-    const text =
-      `&{template:default} {{name=🎲 ${CONFIG.rollName}}} {{Result=**${e.value}**}} {{via=${e.reader}${conf}}}`;
+    const via = CONFIG.DEBUG ? ` {{via=${e.reader}${conf}}}` : "";
+    const text = `&{template:default} {{name=🎲 ${CONFIG.rollName}}} {{Result=**${e.value}**}}${via}`;
     input.value = text;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     send.click();
