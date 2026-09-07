@@ -220,6 +220,10 @@ def cmd_watch(args) -> int:
 
 
 def _cmd_watch(args) -> int:
+    from .camera_access import ensure_camera_access
+
+    if not args.video and not ensure_camera_access():
+        return 3
     chain = _build_chain()
     logger = RollLogger(args.log_dir)
     hub = None
@@ -352,6 +356,10 @@ def probe_cameras(max_index: int = 6, warmup_seconds: float = 0.6, opener=cv2.Vi
     import base64
     import time as _time
 
+    from .camera_access import ensure_camera_access
+
+    if not ensure_camera_access(log=lambda m: print(m, file=sys.stderr)):
+        return []
     found = []
     for index in range(max_index):
         cap = opener(index)
