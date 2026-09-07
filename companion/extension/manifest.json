@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "towereye companion",
+  "version": "0.2",
+  "description": "Fill Beyond20 manual-roll dialogs from the dice tower camera",
+  "content_scripts": [
+    {
+      "matches": ["https://*.dndbeyond.com/*", "https://*.roll20.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -7,8 +7,9 @@ a live feed of recent rolls with reader/confidence, and session counters.
 Late joins replay the last 50 events. Also works as an OBS browser source.
 
 ## Against the demo hub (no rig needed)
+After editing `companion/extension/content.js`, click the reload icon on the extension card and reload the DDB tab.
 1. `.venv/bin/python -m towereye.hub --demo`
-2. Install `companion/towereye.user.js` in Tampermonkey; open any dndbeyond.com page.
+2. Load the extension: chrome://extensions → Developer mode → Load unpacked → `companion/extension/`. Open any dndbeyond.com page (reload the tab if it was already open).
 3. Badge shows a die icon (connected). Kill the demo hub: badge shows disconnected; restart it: badge recovers (auto-reconnect).
 4. With DEBUG=true, check the console logs each demo event.
 

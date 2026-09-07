@@ -1,13 +1,3 @@
-// ==UserScript==
-// @name         towereye companion
-// @namespace    towereye
-// @version      0.1
-// @description  Fill Beyond20 manual-roll dialogs from the dice tower camera
-// @match        https://*.dndbeyond.com/*
-// @match        https://*.roll20.net/*
-// @grant        none
-// ==/UserScript==
-
 (function () {
   "use strict";
 
