@@ -80,3 +80,22 @@ def test_save_template_crops_and_numbers_files(tmp_path):
 
 def test_save_template_without_die_returns_none(tmp_path):
     assert save_template(np.zeros((200, 200, 3), dtype=np.uint8), 17, tmp_path) is None
+
+
+def test_shape_agreement_rewards_matching_glyphs_and_punishes_extra_strokes():
+    import cv2
+    import numpy as np
+    from towereye.keypoints import SIZE, KeypointReader
+
+    def glyph_mask(extra_stroke):
+        m = np.zeros((SIZE, SIZE), np.uint8)
+        cv2.ellipse(m, (SIZE // 2, SIZE // 2), (40, 55), 0, 0, 360, 1, 12)  # a "0"
+        if extra_stroke:
+            cv2.line(m, (SIZE // 2 - 70, SIZE // 2 - 55), (SIZE // 2 - 70, SIZE // 2 + 55), 1, 12)  # "10"
+        return m
+
+    identity = np.float32([[1, 0, 0], [0, 1, 0]])
+    same = KeypointReader._shape_agreement(glyph_mask(False), glyph_mask(False), identity)
+    extra = KeypointReader._shape_agreement(glyph_mask(False), glyph_mask(True), identity)
+    assert same > 0.99
+    assert extra < same * 0.8
