@@ -52,8 +52,7 @@ class CameraSource:
             # a camera just released by another process (or a phone waking
             # up) can take a few seconds to become openable again
             cap.release()
-            self._log(f"camera {self.spec!r} not available yet; waiting for it...")
-            cap = self._reconnect()
+            cap = self._reconnect(reason="not available yet (in use elsewhere, asleep, or camera permission denied)")
             if cap is None:
                 raise RuntimeError(f"could not open camera source {self.spec!r}")
         try:
@@ -70,8 +69,8 @@ class CameraSource:
         finally:
             cap.release() if cap is not None else None
 
-    def _reconnect(self):
-        self._log(f"camera {self.spec!r} dropped a frame; reconnecting...")
+    def _reconnect(self, reason: str = "dropped a frame"):
+        self._log(f"camera {self.spec!r} {reason}; retrying for up to {self.reconnect_seconds:.0f}s...")
         deadline = time.monotonic() + self.reconnect_seconds
         while time.monotonic() < deadline:
             self._sleep(1.0)

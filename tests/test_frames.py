@@ -41,7 +41,7 @@ def test_camera_source_reconnects_after_a_dropped_read(monkeypatch):
     got = list(src.frames())
     assert len(got) == 1 + 2   # first frame, then the reconnect's probe consumes one, two remain
     assert all(c.released for c in opened[:2])
-    assert any("reconnecting" in m for m in logs) and any("is back" in m for m in logs)
+    assert any("retrying" in m for m in logs) and any("is back" in m for m in logs)
 
 
 def test_camera_source_gives_up_after_deadline(monkeypatch):

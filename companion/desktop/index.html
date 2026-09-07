@@ -117,7 +117,7 @@
 
   $("scan").onclick = async () => {
     $("scan").disabled = true;
-    $("scanNote").textContent = "scanning (a few seconds)…";
+    $("scanNote").textContent = "scanning — about 10 seconds, each camera gets a moment to expose…";
     const res = await window.towereye.cameras();
     $("scan").disabled = running;
     if (res.error) { $("scanNote").textContent = res.error; return; }

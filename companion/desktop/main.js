@@ -102,11 +102,18 @@ ipcMain.handle("cameras", async () => {
   if (watchPids().length) return { error: "stop the watch before scanning: it owns the camera" };
   return new Promise((resolve) => {
     const p = spawn(PYTHON, ["-m", "towereye", "cameras", "--json"], { cwd: REPO });
-    let out = "";
+    let out = "", err = "";
     p.stdout.on("data", (d) => { out += d; });
-    p.on("close", () => {
-      try { resolve({ cameras: JSON.parse(out) }); }
-      catch { resolve({ error: "camera scan failed", raw: out }); }
+    p.stderr.on("data", (d) => { err += d; });
+    p.on("close", (code) => {
+      try {
+        const cameras = JSON.parse(out);
+        if (!cameras.length) {
+          resolve({ error: "no cameras opened. If macOS never asked, allow towereye under System Settings → Privacy & Security → Camera." });
+        } else resolve({ cameras });
+      } catch {
+        resolve({ error: `camera scan failed (exit ${code}): ${err.split("\n").filter((l) => l && !/^\[|^OpenCV/.test(l)).slice(-2).join(" ")}` });
+      }
     });
     p.on("error", (e) => resolve({ error: String(e) }));
   });
