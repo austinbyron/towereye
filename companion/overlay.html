@@ -87,12 +87,24 @@
   // ?feed=0 hides the camera layer (overlay-only, e.g. over a separate capture)
   const feedPort = params.get("feedport") || "8778";
   const feed = document.getElementById("feed");
+  let reattachFeed = () => {};
   if (params.get("feed") !== "0") {
-    const src = `http://127.0.0.1:${feedPort}/stream.mjpg`;
-    const attach = () => { feed.src = src + "?t=" + Date.now(); };
+    const base = `http://127.0.0.1:${feedPort}`;
+    const attach = () => { feed.src = `${base}/stream.mjpg?t=${Date.now()}`; };
     feed.onload = () => feed.classList.add("on");
     feed.onerror = () => { feed.classList.remove("on"); setTimeout(attach, 3000); };
     attach();
+    // A killed watch leaves the MJPEG <img> frozen without any error event,
+    // so probe the still endpoint: reattach whenever the server comes back.
+    let up = true;
+    reattachFeed = attach;
+    setInterval(async () => {
+      let ok = false;
+      try { ok = (await fetch(`${base}/frame.jpg`, { cache: "no-store" })).ok; } catch {}
+      if (ok && !up) attach();
+      if (!ok) feed.classList.remove("on");
+      up = ok;
+    }, 3000);
   }
   const HUB = `ws://127.0.0.1:${port}`;
   const RESULT_HOLD_MS = 6000;
@@ -174,7 +186,7 @@
 
   function connect() {
     const ws = new WebSocket(HUB);
-    ws.onopen = () => $("conn").classList.add("on");
+    ws.onopen = () => { $("conn").classList.add("on"); reattachFeed(); }; // a new watch = a new stream
     ws.onclose = () => { $("conn").classList.remove("on"); setTimeout(connect, 3000); };
     ws.onerror = () => ws.close();
     ws.onmessage = (m) => {
