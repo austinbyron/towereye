@@ -115,7 +115,7 @@ def demo_events() -> list[dict]:
         {"type": "armed", "label": "Wisdom Save", "die": "d20"},
         {"type": "unread", "roll_id": "demo-001"},
         {"type": "result", "roll_id": "demo-002", "value": 20,
-         "confidence": 0.9, "reader": "haiku"},
+         "confidence": 0.9, "reader": "vision"},
     ]
 
 

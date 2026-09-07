@@ -10,7 +10,7 @@ FRAME = np.zeros((20, 20, 3), dtype=np.uint8)
 
 def test_logs_frame_and_row(tmp_path):
     logger = RollLogger(tmp_path / "dataset")
-    reading = Reading(value=17, confidence=0.9, reader="haiku")
+    reading = Reading(value=17, confidence=0.9, reader="vision")
     roll_id = logger.log(FRAME, reading, context="Initiative")
 
     assert (tmp_path / "dataset" / "frames" / f"{roll_id}.png").exists()
@@ -19,7 +19,7 @@ def test_logs_frame_and_row(tmp_path):
         "id": roll_id,
         "predicted": 17,
         "confidence": 0.9,
-        "reader": "haiku",
+        "reader": "vision",
         "context": "Initiative",
         "confirmed": None,
     }]

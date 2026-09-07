@@ -1,6 +1,5 @@
 opencv-python>=4.9
 numpy>=1.26
-anthropic>=0.40
 pyobjc-framework-Vision>=10.0; sys_platform == "darwin"
 pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
 pyobjc-framework-AVFoundation>=10.0; sys_platform == "darwin"
