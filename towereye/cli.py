@@ -330,6 +330,55 @@ def cmd_calibrate(args) -> int:
     return 0
 
 
+def probe_cameras(max_index: int = 6, warmup_seconds: float = 0.6, opener=cv2.VideoCapture) -> list[dict]:
+    """Open each device index, let exposure settle, and return a thumbnail so
+    a person can pick the camera by what it sees. Device order differs between
+    AVFoundation, OpenCV, and the system camera list, so names can't be trusted."""
+    import base64
+    import time as _time
+
+    found = []
+    for index in range(max_index):
+        cap = opener(index)
+        if not cap.isOpened():
+            cap.release()
+            continue
+        frame = None
+        deadline = _time.monotonic() + warmup_seconds
+        while _time.monotonic() < deadline:
+            ok, f = cap.read()
+            if ok:
+                frame = f
+        cap.release()
+        if frame is None:
+            continue
+        h, w = frame.shape[:2]
+        thumb = cv2.resize(frame, (320, int(h * 320 / w)), interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        found.append({
+            "index": index,
+            "width": w,
+            "height": h,
+            "thumbnail": "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode() if ok else None,
+        })
+    return found
+
+
+def cmd_cameras(args) -> int:
+    import json
+
+    cameras = probe_cameras(args.max_index)
+    if args.json:
+        print(json.dumps(cameras))
+        return 0
+    if not cameras:
+        print("no cameras opened")
+        return 1
+    for cam in cameras:
+        print(f"index {cam['index']}: {cam['width']}x{cam['height']}")
+    return 0
+
+
 def cmd_bench(args) -> int:
     from .bench import run_bench
 
@@ -383,6 +432,11 @@ def main(argv=None) -> int:
     capture.add_argument("--out-dir", default="captures")
     capture.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop, 1.0 = full field)")
     capture.set_defaults(func=cmd_capture)
+
+    cameras = sub.add_parser("cameras", help="list openable camera indices (with thumbnails in --json)")
+    cameras.add_argument("--json", action="store_true", help="machine-readable output incl. thumbnails")
+    cameras.add_argument("--max-index", type=int, default=6)
+    cameras.set_defaults(func=cmd_cameras)
 
     bench = sub.add_parser("bench", help="score readers against labeled golden frames")
     bench.add_argument("golden_dir")

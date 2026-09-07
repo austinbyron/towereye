@@ -1,0 +1,13 @@
+{
+  "name": "towereye-desktop",
+  "version": "0.1.0",
+  "description": "Start/stop the towereye watch, pick the tray camera by sight, see the live feed and last roll",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

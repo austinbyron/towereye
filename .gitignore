@@ -7,3 +7,4 @@ dataset/
 .env
 templates/
 captures/
+companion/desktop/node_modules/

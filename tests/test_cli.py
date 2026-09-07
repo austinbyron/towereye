@@ -345,3 +345,21 @@ def test_run_watch_resamples_fresh_frames_before_giving_up():
     assert [e["value"] for e in results] == [11]
     assert chain.calls == 2
     assert not [e for e in events if e["type"] == "unread"]
+
+
+def test_probe_cameras_returns_thumbnails_for_openable_indices():
+    from towereye.cli import probe_cameras
+
+    class Cap:
+        def __init__(self, ok):
+            self.ok = ok
+        def isOpened(self):
+            return self.ok
+        def read(self):
+            return (True, np.zeros((720, 1280, 3), np.uint8)) if self.ok else (False, None)
+        def release(self):
+            pass
+
+    cams = probe_cameras(max_index=3, warmup_seconds=0.01, opener=lambda i: Cap(i != 1))
+    assert [c["index"] for c in cams] == [0, 2]
+    assert cams[0]["width"] == 1280 and cams[0]["thumbnail"].startswith("data:image/jpeg;base64,")

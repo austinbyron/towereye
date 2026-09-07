@@ -1,0 +1,177 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>towereye</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 14px/1.4 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; background: #12161c; color: #e6ebf2; padding: 16px; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .3px; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #5b6675; display: inline-block; }
+  .dot.on { background: #3ddc84; }
+  .dot.warn { background: #f9a825; }
+  section { margin-top: 16px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 0; cursor: pointer; background: #2a3441; color: #e6ebf2; }
+  button.primary { background: #3ddc84; color: #0b1a10; }
+  button.danger { background: #e0574f; color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  #cams { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+  .cam { border: 2px solid transparent; border-radius: 10px; overflow: hidden; background: #1b222b; cursor: pointer; }
+  .cam.selected { border-color: #3ddc84; }
+  .cam img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+  .cam .cap { padding: 6px 8px; font-size: 12px; color: #aab6c6; }
+  #feed { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 10px; object-fit: cover; display: none; }
+  #feed.on { display: block; }
+  #last { font-size: 40px; font-weight: 700; margin-top: 6px; }
+  #last small { font-size: 13px; font-weight: 500; color: #aab6c6; margin-left: 8px; }
+  #log { margin-top: 8px; height: 150px; overflow: auto; background: #0b0e12; border-radius: 8px; padding: 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #aab6c6; white-space: pre-wrap; }
+  .muted { color: #8b97a8; font-size: 12px; }
+  .status { display: flex; gap: 14px; font-size: 12px; color: #aab6c6; }
+</style>
+</head>
+<body>
+<h1><span class="dot" id="dotWatch"></span> towereye</h1>
+<div class="status">
+  <span><span class="dot" id="dotHub"></span> hub</span>
+  <span><span class="dot" id="dotStream"></span> stream</span>
+  <span id="envNote" class="muted"></span>
+</div>
+
+<section>
+  <div class="row">
+    <strong>Tray camera</strong>
+    <button id="scan">Scan cameras</button>
+    <span class="muted" id="scanNote">pick the one that shows the tray</span>
+  </div>
+  <div id="cams"></div>
+</section>
+
+<section class="row">
+  <button id="start" class="primary" disabled>Start watching</button>
+  <button id="stop" class="danger" disabled>Stop</button>
+</section>
+
+<section>
+  <img id="feed" alt="">
+  <div id="last"><span class="muted">no rolls yet</span></div>
+</section>
+
+<section>
+  <div id="log"></div>
+</section>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const HUB = "ws://127.0.0.1:8777";
+  const STREAM = "http://127.0.0.1:8778";
+  let selected = null;
+  let running = false;
+  try { selected = JSON.parse(localStorage.getItem("camera")); } catch {}
+
+  function log(line) {
+    const el = $("log");
+    el.textContent += line + "\n";
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function setRunning(on) {
+    running = on;
+    $("dotWatch").className = "dot" + (on ? " on" : "");
+    $("start").disabled = on || selected === null;
+    $("stop").disabled = !on;
+    $("scan").disabled = on;
+    $("feed").classList.toggle("on", on);
+    if (on) $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
+    else $("feed").removeAttribute("src");
+  }
+
+  function renderCams(cams) {
+    const grid = $("cams");
+    grid.innerHTML = "";
+    for (const c of cams) {
+      const card = document.createElement("div");
+      card.className = "cam" + (c.index === selected ? " selected" : "");
+      card.innerHTML = `<img src="${c.thumbnail || ""}"><div class="cap">index ${c.index} · ${c.width}×${c.height}</div>`;
+      card.onclick = () => {
+        selected = c.index;
+        localStorage.setItem("camera", JSON.stringify(selected));
+        document.querySelectorAll(".cam").forEach((n) => n.classList.remove("selected"));
+        card.classList.add("selected");
+        $("start").disabled = running;
+      };
+      grid.appendChild(card);
+    }
+    if (!cams.length) $("scanNote").textContent = "no cameras opened — is the phone awake and nearby?";
+  }
+
+  $("scan").onclick = async () => {
+    $("scan").disabled = true;
+    $("scanNote").textContent = "scanning (a few seconds)…";
+    const res = await window.towereye.cameras();
+    $("scan").disabled = running;
+    if (res.error) { $("scanNote").textContent = res.error; return; }
+    $("scanNote").textContent = "pick the one that shows the tray";
+    renderCams(res.cameras);
+  };
+
+  $("start").onclick = async () => {
+    const res = await window.towereye.start(selected);
+    if (!res.ok) log(res.error);
+  };
+  $("stop").onclick = () => window.towereye.stop();
+
+  window.towereye.onLog(log);
+  window.towereye.onState((s) => setRunning(s.running));
+
+  // hub: last roll + connection dot
+  function connectHub() {
+    const ws = new WebSocket(HUB);
+    ws.onopen = () => { $("dotHub").className = "dot on"; };
+    ws.onclose = () => { $("dotHub").className = "dot"; setTimeout(connectHub, 3000); };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (m) => {
+      let e; try { e = JSON.parse(m.data); } catch { return; }
+      if (e.type === "history") return;
+      if (e.type === "result") {
+        $("last").innerHTML = `${e.value}<small>${e.reader} ${Number(e.confidence).toFixed(2)}</small>`;
+      } else if (e.type === "reroll") {
+        $("last").innerHTML = `<span class="muted">die at the tray edge — reroll</span>`;
+      } else if (e.type === "unread") {
+        $("last").innerHTML = `<span class="muted">couldn't read it — reroll</span>`;
+      }
+    };
+  }
+  connectHub();
+
+  // stream dot: poll the still endpoint
+  async function pollStream() {
+    try {
+      const r = await fetch(`${STREAM}/frame.jpg`, { cache: "no-store" });
+      $("dotStream").className = "dot" + (r.ok ? " on" : "");
+      if (r.ok && !running) {
+        // a watch started from a terminal owns the camera; don't fight it
+        $("envNote").textContent = "a watch is already running outside this app";
+        $("start").disabled = true;
+        $("feed").classList.add("on");
+        if (!$("feed").src) $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
+      } else if (!r.ok && !running) {
+        $("envNote").textContent = "";
+        $("start").disabled = selected === null;
+      }
+    } catch { $("dotStream").className = "dot"; }
+    setTimeout(pollStream, 3000);
+  }
+  pollStream();
+
+  window.towereye.env().then((env) => {
+    if (!env.pythonOk) { $("envNote").textContent = `no .venv in ${env.repo}`; $("start").disabled = true; }
+    setRunning(env.running);
+    if (selected !== null) $("scanNote").textContent = `remembered camera index ${selected} — scan to confirm`;
+  });
+})();
+</script>
+</body>
+</html>
