@@ -27,17 +27,61 @@ macOS only for now (Apple Vision, AVFoundation camera access). The core
 pipeline is numpy/OpenCV with Vision behind a small shim, so porting is on the
 roadmap.
 
+## Requirements
+
+- macOS (Apple Vision for OCR, AVFoundation for the camera)
+- Python 3.10 or newer
+- A camera aimed straight down into the dice tray: a webcam on an arm, or an
+  old phone on a mount used as a camera. A clip-on LED light helps a lot.
+- Chrome (for the Roll20 / Beyond20 extension) and OBS (for the overlay)
+
+The first run asks for camera permission. macOS grants it to the app that
+launched towereye, so allow it for your terminal (or towereye.app) under
+System Settings → Privacy & Security → Camera.
+
 ## Quick start
 
     python3 -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
 
-    python -m towereye cameras            # find your tray camera index
-    python -m towereye calibrate --camera N --die d20   # photograph each face once
+**1. Find the camera.** Device order differs between apps, so check by index:
+
+    python -m towereye cameras
+    python -m towereye capture --camera N     # preview; 's' saves a frame, 'q' quits
+
+**2. Calibrate your dice.** towereye matches lettering against templates of
+*your* dice, so photograph each face once per die you use. Place the shown
+face up, press `s` to save (2 to 3 per face, nudging rotation between saves),
+`n` for the next face, `b` back, `q` to quit. Templates land in
+`templates/<die>/`.
+
+    python -m towereye calibrate --camera N --die d20
+    python -m towereye calibrate --camera N --die d8
+
+**3. Watch.**
+
     python -m towereye watch --camera N --preview
 
-Then load `companion/extension/` as an unpacked Chrome extension and open your
-Roll20 game. Rolls appear in chat as you throw them.
+The console prints the hub (`ws://127.0.0.1:8777`) and stream
+(`http://127.0.0.1:8778/stream.mjpg`) URLs. Drop a die; the value prints.
+`--zoom 1.5` center-crops if the tray is small in frame. Ctrl-C stops.
+
+**4. Send rolls to Roll20.** Open `chrome://extensions`, turn on Developer
+mode, choose Load unpacked, and pick `companion/extension/`. Open (or reload)
+your Roll20 game tab. Each roll now appears in chat as a roll card. For the
+Beyond20 dialog path see [docs/m2-checklist.md](docs/m2-checklist.md).
+
+**5. Show it on stream (optional).** In OBS add a Browser source pointing at
+the local file `companion/overlay.html`. It draws the tray feed with a result
+pop and nat 20 / nat 1 flair. Full picture-in-picture setup for Discord is in
+[docs/m3-obs-setup.md](docs/m3-obs-setup.md).
+
+### Try it without a camera
+
+`python -m towereye.hub --demo` replays fake roll events on the hub, so you
+can test the extension, `companion/monitor.html`, and the overlay without a
+rig. `python -m towereye watch --video clip.mp4` runs the reader on a
+recorded clip.
 
 ## Commands
 
