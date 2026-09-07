@@ -3,6 +3,9 @@ asking, so a process spawned by an app that was never granted access just
 fails to open every camera. Ask up front, and say so when denied."""
 import sys
 import threading
+import time
+
+_keep = []  # completion blocks must outlive the XPC reply that releases them
 
 DENIED_HINT = (
     "camera access is denied for this app. Allow it under System Settings → "
@@ -32,8 +35,12 @@ def ensure_camera_access(timeout: float = 60.0, log=print) -> bool:
             done.set()
 
         log("asking macOS for camera access...")
+        _keep.append(handler)
         av.AVCaptureDevice.requestAccessForMediaType_completionHandler_(av.AVMediaTypeVideo, handler)
         done.wait(timeout)
+        # the reply block is disposed on a dispatch thread right after the
+        # handler runs; give it a beat so it never races interpreter shutdown
+        time.sleep(0.3)
         if result["granted"]:
             return True
     log(DENIED_HINT)

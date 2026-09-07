@@ -15,6 +15,7 @@ The Python watch stays the source of truth; this is only a remote control.
     npx @electron/packager . towereye --platform=darwin --arch=x64 --out=dist --overwrite --ignore="dist|build/icon.iconset|build/icon_1024.png"
     cp build/icon.icns dist/towereye-darwin-x64/towereye.app/Contents/Resources/electron.icns
     rm -rf /Applications/towereye.app && cp -R dist/towereye-darwin-x64/towereye.app /Applications/
+    codesign --force --deep --sign - /Applications/towereye.app   # ad-hoc sign: unsigned apps never get the camera prompt
 
 The packaged app expects the repo at `~/CodeProjects/towereye` (override with
 the `TOWEREYE_REPO` env var). The icon is drawn by a small OpenCV script
