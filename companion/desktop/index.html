@@ -89,12 +89,24 @@
     $("stop").disabled = !on || !!starting;
     $("scan").disabled = on;
     $("scanNote").textContent = on ? "stop the watch to rescan (it owns the camera)" : "pick the one that shows the tray";
-    if (changed || (on && !$("feed").src)) {
-      $("feed").classList.toggle("on", on);
-      if (on) $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
-      else $("feed").removeAttribute("src");
-    }
+    if (!on) hideFeed();
   }
+
+  // The preview follows the stream's health, not the process state: attaching
+  // before the stream is up leaves a broken image behind.
+  let feedUp = false;
+  function showFeed() {
+    if (feedUp) return;
+    feedUp = true;
+    $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
+    $("feed").classList.add("on");
+  }
+  function hideFeed() {
+    feedUp = false;
+    $("feed").classList.remove("on");
+    $("feed").removeAttribute("src");
+  }
+  $("feed").onerror = hideFeed;
 
   function renderCams(cams) {
     const grid = $("cams");
@@ -161,7 +173,8 @@
     try {
       const r = await fetch(`${STREAM}/frame.jpg`, { cache: "no-store" });
       $("dotStream").className = "dot" + (r.ok ? " on" : "");
-    } catch { $("dotStream").className = "dot"; }
+      if (r.ok) showFeed(); else hideFeed();
+    } catch { $("dotStream").className = "dot"; hideFeed(); }
     setTimeout(pollStream, 3000);
   }
   pollStream();
