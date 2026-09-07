@@ -188,6 +188,13 @@ def _zoom_frames(frames: Iterator[np.ndarray], factor: float) -> Iterator[np.nda
         yield frame[y : y + ch, x : x + cw]
 
 
+def _published_frames(frames: Iterator[np.ndarray], publisher) -> Iterator[np.ndarray]:
+    """Tee every frame into the MJPEG publisher (rate-limited inside)."""
+    for frame in frames:
+        publisher.publish(frame)
+        yield frame
+
+
 def _preview_frames(frames: Iterator[np.ndarray]) -> Iterator[np.ndarray]:
     """Mirror the stream to an on-screen window; press 'q' there to stop."""
     try:
@@ -215,8 +222,21 @@ def cmd_watch(args) -> int:
         except Exception as exc:
             print(f"Hub unavailable ({exc}); continuing without it")
             hub = None
+    stream = None
+    if not args.no_stream:
+        from .stream import FramePublisher, StreamServer
+
+        try:
+            stream = StreamServer(FramePublisher(), port=args.stream_port)
+            stream.start_in_thread()
+            print(f"Camera stream on http://127.0.0.1:{stream.port}/stream.mjpg")
+        except OSError as exc:
+            print(f"Stream unavailable ({exc}); continuing without it")
+            stream = None
     print(f"Watching for rolls (log dir: {args.log_dir}). Ctrl-C to stop.")
     frames = _zoom_frames(_source_from_args(args).frames(), args.zoom)
+    if stream is not None:
+        frames = _published_frames(frames, stream.publisher)
     if args.preview:
         frames = _preview_frames(frames)
     try:
@@ -226,6 +246,8 @@ def cmd_watch(args) -> int:
     finally:
         if hub is not None:
             hub.stop()
+        if stream is not None:
+            stream.stop()
     print("Session over.")
     return 0
 
@@ -347,6 +369,8 @@ def main(argv=None) -> int:
     watch.add_argument("--preview", action="store_true", help="show the live feed in a window")
     watch.add_argument("--hub-port", type=int, default=8777, help="WebSocket hub port")
     watch.add_argument("--no-hub", action="store_true", help="disable the WebSocket hub")
+    watch.add_argument("--stream-port", type=int, default=8778, help="MJPEG camera stream port (for the OBS overlay)")
+    watch.add_argument("--no-stream", action="store_true", help="disable the camera stream")
     watch.set_defaults(func=cmd_watch)
 
     read = sub.add_parser("read", help="read a die from a still image")

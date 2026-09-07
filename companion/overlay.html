@@ -8,6 +8,10 @@
      anchors to the bottom-center lower third. */
   * { box-sizing: border-box; margin: 0; }
   html, body { background: transparent; overflow: hidden; width: 100%; height: 100%; }
+  /* Camera feed layer: the watch republishes its frames on localhost so OBS
+     needs only this one browser source. Hidden unless the stream answers. */
+  #feed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+  #feed.on { display: block; }
   body { font: 600 24px/1.3 -apple-system, "SF Pro Display", "Segoe UI", sans-serif; }
 
   #stage {
@@ -66,6 +70,7 @@
 </style>
 </head>
 <body>
+<img id="feed" alt="">
 <div id="stage">
   <div id="natline"></div>
   <div id="result"></div>
@@ -77,7 +82,18 @@
 <script>
 (function () {
   "use strict";
-  const port = new URLSearchParams(location.search).get("port") || "8777";
+  const params = new URLSearchParams(location.search);
+  const port = params.get("port") || "8777";
+  // ?feed=0 hides the camera layer (overlay-only, e.g. over a separate capture)
+  const feedPort = params.get("feedport") || "8778";
+  const feed = document.getElementById("feed");
+  if (params.get("feed") !== "0") {
+    const src = `http://127.0.0.1:${feedPort}/stream.mjpg`;
+    const attach = () => { feed.src = src + "?t=" + Date.now(); };
+    feed.onload = () => feed.classList.add("on");
+    feed.onerror = () => { feed.classList.remove("on"); setTimeout(attach, 3000); };
+    attach();
+  }
   const HUB = `ws://127.0.0.1:${port}`;
   const RESULT_HOLD_MS = 6000;
   const NOTE_HOLD_MS = 4500;
