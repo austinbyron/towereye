@@ -66,20 +66,20 @@ def lettering(img: np.ndarray) -> np.ndarray:
     return cv2.bitwise_and(gray, gray, mask=keep)
 
 
-def _window(frame: np.ndarray, cx: float, cy: float, radius: float) -> np.ndarray:
-    half = int(CROP_SCALE * radius)
+def _window(frame: np.ndarray, cx: float, cy: float, radius: float, scale: float = CROP_SCALE) -> np.ndarray:
+    half = int(scale * radius)
     h, w = frame.shape[:2]
     x0, x1 = max(0, int(cx) - half), min(w, int(cx) + half)
     y0, y1 = max(0, int(cy) - half), min(h, int(cy) + half)
     return frame[y0:y1, x0:x1]
 
 
-def topface_crop(frame: np.ndarray) -> np.ndarray | None:
+def topface_crop(frame: np.ndarray, scale: float = CROP_SCALE) -> np.ndarray | None:
     blob = die_blob(frame)
     if blob is None:
         return None
     cx, cy, radius = blob
-    crop = _window(frame, cx, cy, radius)
+    crop = _window(frame, cx, cy, radius, scale)
     if not crop.size:
         return None
     # second pass: the blob centroid drifts when the die is half-shadowed;
@@ -91,7 +91,7 @@ def topface_crop(frame: np.ndarray) -> np.ndarray | None:
         # only intervene on real drift: small shifts mean the crop was fine,
         # and nudging those pulls toward adjacent numerals
         if 0.08 * w < np.hypot(dx, dy) < 0.5 * radius:
-            recentered = _window(frame, cx + dx, cy + dy, radius)
+            recentered = _window(frame, cx + dx, cy + dy, radius, scale)
             if recentered.size:
                 crop = recentered
     return crop

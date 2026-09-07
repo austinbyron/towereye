@@ -250,7 +250,7 @@ def test_format_event_matches_console_lines():
         {"type": "result", "roll_id": "x", "value": 17, "confidence": 0.95, "reader": "keypoints"}
     ) == "You rolled 17 (keypoints, 0.95)"
     assert format_event({"type": "unread", "roll_id": "x"}) == (
-        "Could not read the die - check lighting/framing"
+        "Could not read the die after resampling - reroll"
     )
     assert format_event({"type": "reroll", "reason": "tray-edge"}) == (
         "Die is at the tray edge - reroll"
@@ -319,3 +319,29 @@ def test_confirm_with_missing_frame_only_logs(tmp_path):
     on_confirm = _harvest_on_confirm(logger, template_dir=tmp_path / "templates")
     on_confirm("no-such-roll", 4)  # must not raise
     assert '"confirmed": 4' in (tmp_path / "dataset" / "rolls.jsonl").read_text()
+
+
+def test_run_watch_resamples_fresh_frames_before_giving_up():
+    class FlakyChain:
+        def __init__(self):
+            self.calls = 0
+
+        def read(self, frame):
+            self.calls += 1
+            return Reading(value=11, confidence=0.95, reader="k") if self.calls == 2 else None
+
+    events = []
+    chain = FlakyChain()
+    # long still tail so the resample rounds have stable frames to pull
+    throw = [_die_square(x) for x in range(0, 72, 12)] + [_die_square(60)] * 60
+    run_watch(
+        frames=iter(throw),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=chain,
+        logger=ListLogger(),
+        emit=events.append,
+    )
+    results = [e for e in events if e["type"] == "result"]
+    assert [e["value"] for e in results] == [11]
+    assert chain.calls == 2
+    assert not [e for e in events if e["type"] == "unread"]

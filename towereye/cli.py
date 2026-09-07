@@ -19,6 +19,10 @@ from .topface import die_blob, sharpness
 # frames to pull after a settle so autofocus can catch up (~0.5s at 30fps);
 # the sharpest STABLE one is read
 POST_SETTLE_FRAMES = 15
+# when no reader is confident, pull fresh frames and try again this many
+# times (autofocus/glare often clears in the next half second) before
+# asking for a reroll
+RESAMPLE_ROUNDS = 2
 
 # A die that re-settles in the same spot (shadow flicker, lights changing,
 # tower vibration) is never re-reported; only its leaving the tray re-arms.
@@ -53,7 +57,7 @@ def format_event(event: dict) -> str:
     if kind == "result":
         return f"You rolled {event['value']} ({event['reader']}, {event['confidence']:.2f})"
     if kind == "unread":
-        return "Could not read the die - check lighting/framing"
+        return "Could not read the die after resampling - reroll"
     if kind == "reroll":
         return "Die is at the tray edge - reroll"
     return "Die never settled (cocked or bounced out?) - re-roll"
@@ -69,7 +73,7 @@ def _fan_out(hub, logger) -> Callable[[dict], None]:
     return emit
 
 
-def _harvest_on_confirm(logger, template_dir="templates", max_per_face=6):
+def _harvest_on_confirm(logger, template_dir="templates/d20", max_per_face=6):
     from .keypoints import save_template
 
     def on_confirm(roll_id: str, value: int) -> None:
@@ -121,6 +125,15 @@ def run_watch(
                 candidates += [f for f in extra if _die_unmoved(ref, f)]
             settled = max(candidates, key=sharpness)
             reading = chain.read(settled)
+            rounds = 0
+            while reading is None and ref is not None and rounds < RESAMPLE_ROUNDS:
+                # resample: fresh frames, same die, retry every reader/crop
+                rounds += 1
+                extra = [f for f in itertools.islice(frames, POST_SETTLE_FRAMES) if _die_unmoved(ref, f)]
+                if not extra:
+                    break
+                settled = max(extra, key=sharpness)
+                reading = chain.read(settled)
             roll_id = logger.log(settled, reading)
             if reading is not None:
                 emit({
@@ -151,13 +164,7 @@ def _build_chain() -> ReaderChain:
         from .readers.apple_vision import AppleVisionReader
 
         readers.append(AppleVisionReader())
-    from .readers.haiku import HaikuReader
-
-    haiku = HaikuReader()
-    readers.append(haiku)
-    chain = ReaderChain(readers)
-    chain.haiku = haiku  # expose for the session call counter
-    return chain
+    return ReaderChain(readers)
 
 
 def _source_from_args(args):
@@ -219,7 +226,7 @@ def cmd_watch(args) -> int:
     finally:
         if hub is not None:
             hub.stop()
-    print(f"Session over. Haiku API calls this session: {chain.haiku.calls}")
+    print("Session over.")
     return 0
 
 
@@ -258,7 +265,8 @@ def cmd_capture(args) -> int:
 def cmd_calibrate(args) -> int:
     from .keypoints import save_template
 
-    out_dir = Path(args.out_dir)
+    faces = int(args.die.lower().lstrip("d"))
+    out_dir = Path(args.out_dir) / args.die.lower()
     value = args.start
     print(
         "Calibration: place the die with the shown face UP, wait for focus, then\n"
@@ -270,7 +278,7 @@ def cmd_calibrate(args) -> int:
         overlay = frame.copy()
         cv2.putText(
             overlay,
-            f"face {value}/20  saved {saved_this_face}   s=save n=next b=back q=quit",
+            f"{args.die} face {value}/{faces}  saved {saved_this_face}   s=save n=next b=back q=quit",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -287,7 +295,7 @@ def cmd_calibrate(args) -> int:
                 saved_this_face += 1
                 print(f"saved {path}")
         elif key == ord("n"):
-            if value == 20:
+            if value == faces:
                 break
             value += 1
             saved_this_face = 0
@@ -360,7 +368,8 @@ def main(argv=None) -> int:
     calibrate.add_argument("--camera", default="0", help="device index or stream URL")
     calibrate.add_argument("--video", help=argparse.SUPPRESS)
     calibrate.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop, 1.0 = full field)")
-    calibrate.add_argument("--out-dir", default="templates")
+    calibrate.add_argument("--out-dir", default="templates", help="template root; die pools live in <out-dir>/<die>/")
+    calibrate.add_argument("--die", default="d20", help="which die: d20, d8, d12 ... sets the face count and pool")
     calibrate.add_argument("--start", type=int, default=1, help="face value to start from")
     calibrate.set_defaults(func=cmd_calibrate)
 

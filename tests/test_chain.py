@@ -45,12 +45,27 @@ def test_chain_falls_through_on_low_confidence():
     assert chain.read(FRAME).value == 9
 
 
-def test_chain_returns_best_effort_when_all_weak():
+def test_chain_never_returns_a_weak_guess():
+    # a wrong number in chat is worse than a reroll: no best-effort guesses
     weak1 = FakeReader("a", Reading(value=6, confidence=0.2, reader="a"))
     weak2 = FakeReader("b", Reading(value=9, confidence=0.4, reader="b"))
     chain = ReaderChain([weak1, weak2], min_confidence=0.5)
-    result = chain.read(FRAME)
-    assert result.value == 9 and result.confidence == 0.4
+    assert chain.read(FRAME) is None
+
+
+def test_chain_retries_alternate_crops_before_giving_up():
+    f = np.zeros((200, 200, 3), dtype=np.uint8)
+    f[20:90, 100:170] = (255, 120, 100)
+    class Flaky:
+        name = "flaky"
+        def __init__(self):
+            self.shapes = []
+        def read(self, crop):
+            self.shapes.append(crop.shape[0])
+            return Reading(value=4, confidence=0.9, reader=self.name) if len(self.shapes) == 2 else None
+    reader = Flaky()
+    assert ReaderChain([reader]).read(f).value == 4
+    assert len(reader.shapes) == 2 and reader.shapes[1] > reader.shapes[0]  # second try was the wider crop
 
 
 def test_chain_returns_none_when_all_fail():

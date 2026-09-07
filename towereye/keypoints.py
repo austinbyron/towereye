@@ -67,7 +67,10 @@ class KeypointReader:
         self._sift = cv2.SIFT_create()
         self._bf = cv2.BFMatcher()
         self.templates: list[tuple[int, list, np.ndarray, np.ndarray]] = []
-        for path in sorted(Path(template_dir).glob("*.png")):
+        # templates/<die>/<value>_<n>.png; every die's pool loads together so
+        # the value falls out of whichever die's lettering matches (a d8's
+        # underlined 6 is its own template, not a d20 6 look-alike)
+        for path in sorted(Path(template_dir).rglob("*.png")):
             value = parse_golden_name(path)
             img = cv2.imread(str(path))
             if value is None or img is None:
@@ -156,7 +159,7 @@ class KeypointReader:
         return Reading(value=value, confidence=0.95, reader=self.name)
 
 
-def save_template(frame: np.ndarray, value: int, out_dir: str | Path) -> Path | None:
+def save_template(frame: np.ndarray, value: int, out_dir: str | Path = "templates/d20") -> Path | None:
     """Save the frame's top-face crop as the next '<value>_<n>.png' template."""
     crop = topface_crop(frame)
     if crop is None:
