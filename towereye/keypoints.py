@@ -30,9 +30,12 @@ MARGIN = 1.5
 # Shape verification: the top candidate's warped glyph mask must overlap the
 # query's this well, and beat the runner-up's overlap by this factor when the
 # inlier margin alone can't decide.
-IOU_MIN = 0.35
+IOU_MIN = 0.40
 IOU_MARGIN = 1.2
-DISC_FRAC = 0.45
+# Below this many inliers the shape fit must be decisive on its own.
+STRONG_INLIERS = 6
+IOU_STRONG = 0.55
+DISC_FRAC = 0.32
 RATIO = 0.75        # Lowe's ratio test for candidate matches
 MIN_SPREAD = 0.15   # inliers must span this fraction of the image both ways
 CENTER_TOL = 0.30   # inlier centroid must sit this close to the image center
@@ -144,6 +147,9 @@ class KeypointReader:
         value, iou = contested[0]
         rival_iou = contested[1][1] if len(contested) > 1 else 0.0
         if iou < IOU_MIN:
+            return None
+        if len(best[value][0]) < STRONG_INLIERS and iou < IOU_STRONG:
+            # a thin match must be vouched for by a decisive shape fit
             return None
         if len(contested) > 1 and iou < IOU_MARGIN * max(rival_iou, 0.05):
             return None
