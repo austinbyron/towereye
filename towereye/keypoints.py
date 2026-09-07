@@ -31,7 +31,7 @@ MARGIN = 1.5
 # query's this well, and beat the runner-up's overlap by this factor when the
 # inlier margin alone can't decide.
 IOU_MIN = 0.35
-IOU_MARGIN = 1.3
+IOU_MARGIN = 1.2
 DISC_FRAC = 0.45
 RATIO = 0.75        # Lowe's ratio test for candidate matches
 MIN_SPREAD = 0.15   # inliers must span this fraction of the image both ways
@@ -130,17 +130,24 @@ class KeypointReader:
             if len(found) > len(best.setdefault(value, (set(), 0.0))[0]):
                 best[value] = (found, self._shape_agreement(qmask, tmask, affine))
         ranked = sorted(best.items(), key=lambda kv: -len(kv[1][0]))
-        top_value, (top, top_iou) = ranked[0]
-        runner_up, runner_iou = ranked[1][1] if len(ranked) > 1 else (set(), 0.0)
-        if len(top) < MIN_INLIERS or top_iou < IOU_MIN:
+        top_count = len(ranked[0][1][0])
+        if top_count < MIN_INLIERS:
             return None
-        if len(top) >= MARGIN * max(len(runner_up), 1):
-            return Reading(value=top_value, confidence=0.95, reader=self.name)
-        # Adversarial rescoring: a close inlier contest is settled by which
-        # glyph shape actually fits the query, not by shared strokes.
-        if top_iou >= IOU_MARGIN * max(runner_iou, 0.05):
-            return Reading(value=top_value, confidence=0.95, reader=self.name)
-        return None
+        # Every face within the inlier margin of the leader is a contender;
+        # ties and near-ties among glyphs are settled by which shape actually
+        # fits the query (adversarial check), not by who got one more inlier.
+        contested = [
+            (value, iou) for value, (found, iou) in ranked
+            if len(found) >= MIN_INLIERS and MARGIN * len(found) > top_count
+        ]
+        contested.sort(key=lambda vi: -vi[1])
+        value, iou = contested[0]
+        rival_iou = contested[1][1] if len(contested) > 1 else 0.0
+        if iou < IOU_MIN:
+            return None
+        if len(contested) > 1 and iou < IOU_MARGIN * max(rival_iou, 0.05):
+            return None
+        return Reading(value=value, confidence=0.95, reader=self.name)
 
 
 def save_template(frame: np.ndarray, value: int, out_dir: str | Path) -> Path | None:

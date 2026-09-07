@@ -27,11 +27,18 @@
 
   function connect() {
     ws = new WebSocket(CONFIG.hubUrl);
-    ws.onopen = () => { log("hub connected"); badge("🎲"); };
+    ws.onopen = () => { console.log("[towereye] hub connected"); badge("🎲"); };
     ws.onclose = () => { badge("🎲✖"); setTimeout(connect, CONFIG.reconnectMs); };
     ws.onerror = () => ws.close();
     ws.onmessage = (m) => {
       let e; try { e = JSON.parse(m.data); } catch { return; }
+      // roll traffic is always logged (reader/confidence included); DEBUG
+      // only adds the noisier dialog-hunting output
+      if (e.type === "result") {
+        console.log(`[towereye] rolled ${e.value} (${e.reader} ${Number(e.confidence).toFixed(2)}) id=${e.roll_id}`);
+      } else if (e.type !== "history") {
+        console.log("[towereye]", e.type, e.reason || "");
+      }
       log("event", e);
       if (e.type === "history") return; // late-join replay: never post old rolls
       if (e.type === "result" && ON_ROLL20) postToRoll20(e);
