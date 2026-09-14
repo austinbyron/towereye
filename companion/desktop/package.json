@@ -1,6 +1,6 @@
 {
   "name": "towereye-desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Start/stop the towereye watch, pick the tray camera by sight, see the live feed and last roll",
   "main": "main.js",
   "private": true,
@@ -41,20 +41,8 @@
       "category": "public.app-category.utilities",
       "icon": "build/icon.icns",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        "dmg",
+        "zip"
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,

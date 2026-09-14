@@ -39,7 +39,10 @@ Connect API key). Actions are pinned to commit SHAs.
 
 Install: open the DMG and drag towereye to Applications. Data (templates,
 roll dataset, watch log) lives in `~/Library/Application Support/towereye`.
-Bump `version` in `package.json` before a release; the tag is `v<version>`.
+Bump `version` in `package.json` before a release; the tag is `v<version>`
+and the workflow refuses a mismatch (electron-builder files assets under
+the package version, not the tag). The mac target lists no arch: the CLI
+flag picks it, so each CI job builds exactly its own architecture.
 
 Dev shortcut (no signing): `npm start` runs the window against the repo's
 `.venv` python with data in the repo dir. `TOWEREYE_REPO=<path>` makes even
