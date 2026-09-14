@@ -13,3 +13,6 @@ companion/desktop/dist/
 .towereye-watch.pid
 .DS_Store
 golden/
+packaging/dist/
+packaging/build/
+companion/extension/dist/

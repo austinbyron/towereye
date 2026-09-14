@@ -1,14 +1,78 @@
 {
   "name": "towereye-desktop",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Start/stop the towereye watch, pick the tray camera by sight, see the live feed and last roll",
   "main": "main.js",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "core": "cd ../.. && .venv/bin/pyinstaller --noconfirm --distpath packaging/dist --workpath packaging/build packaging/towereye.spec",
+    "dist": "npm run core && electron-builder --mac",
+    "release": "npm run core && electron-builder --mac --publish always"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "homepage": "https://github.com/austinbyron/towereye",
+  "author": "Austin Byron",
+  "build": {
+    "appId": "com.austinbyron.towereye",
+    "productName": "towereye",
+    "artifactName": "${productName}-mac-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../packaging/dist/towereye-core",
+        "to": "towereye-core"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "towereye watches your dice tray through the camera to read rolls."
+      },
+      "notarize": true
+    },
+    "dmg": {
+      "sign": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "austinbyron",
+      "repo": "towereye",
+      "releaseType": "draft"
+    }
   }
 }

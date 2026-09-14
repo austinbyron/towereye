@@ -99,3 +99,35 @@ def test_shape_agreement_rewards_matching_glyphs_and_punishes_extra_strokes():
     extra = KeypointReader._shape_agreement(glyph_mask(False), glyph_mask(True), identity)
     assert same > 0.99
     assert extra < same * 0.8
+
+
+def test_die_filter_restricts_matching_to_that_pool(tmp_path):
+    (tmp_path / "d20").mkdir()
+    (tmp_path / "d8").mkdir()
+    cv2.imwrite(str(tmp_path / "d20" / "7_000.png"), _textured(1))
+    cv2.imwrite(str(tmp_path / "d8" / "3_000.png"), _textured(2))
+    reader = KeypointReader(template_dir=tmp_path)
+    assert sorted(t[4] for t in reader.templates) == ["d20", "d8"]
+    assert reader.read(_rotated(_textured(1), 20)).value == 7  # auto: every pool competes
+    reader.die = "d8"
+    assert reader.read(_rotated(_textured(1), 20)) is None  # the d20 7 is out of the running
+    assert reader.read(_rotated(_textured(2), 20)).value == 3
+    reader.die = "d20"
+    assert reader.read(_rotated(_textured(2), 20)) is None
+
+
+def test_root_level_templates_belong_to_every_die(tmp_path):
+    cv2.imwrite(str(tmp_path / "7_000.png"), _textured(1))
+    reader = KeypointReader(template_dir=tmp_path)
+    assert reader.templates[0][4] is None
+    reader.die = "d8"
+    assert reader.read(_rotated(_textured(1), 20)).value == 7
+
+
+def test_add_template_grows_the_pool_live(tmp_path):
+    reader = KeypointReader(template_dir=tmp_path)
+    assert reader.read(_rotated(_textured(1), 20)) is None
+    reader.add_template(_textured(1), 7, "d8")
+    assert reader.templates[-1][4] == "d8"
+    reader.die = "d8"
+    assert reader.read(_rotated(_textured(1), 20)).value == 7

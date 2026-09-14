@@ -16,10 +16,10 @@ Real dice, online table.
 3. **Publish** the roll on a local WebSocket hub (port 8777) and an MJPEG
    camera stream (port 8778).
 4. **Companions** consume the hub:
-   - a Chrome extension posts each roll into Roll20 chat or fills a Beyond20
-     manual-roll dialog (`companion/extension/`)
+   - a Chrome extension posts each roll into Roll20 chat
+     (`companion/extension/`, toolbar popup picks the die)
    - an OBS browser-source overlay draws the tray feed plus a result pop
-     with nat 20 / nat 1 flair (`companion/overlay.html`)
+     with nat 20 / nat 1 flair, served by the watch at `http://127.0.0.1:8778/overlay`
    - a small Electron app starts/stops the watch and picks the camera by
      thumbnail (`companion/desktop/`)
 
@@ -39,7 +39,18 @@ The first run asks for camera permission. macOS grants it to the app that
 launched towereye, so allow it for your terminal (or towereye.app) under
 System Settings → Privacy & Security → Camera.
 
-## Quick start
+## Mac app
+
+Site: [towereye.austinbyron.com](https://towereye.austinbyron.com) (source in `site/`,
+deployed to Cloudflare Pages with `npx wrangler pages deploy site --project-name towereye`).
+
+The easiest way to run towereye is the Mac app from the
+[Releases](https://github.com/austinbyron/towereye/releases) page: download
+the DMG, drag towereye to Applications, scan for your camera, calibrate your
+dice from the Calibrate panel, and start watching. It bundles Python, so
+nothing below is needed. See [docs/desktop-app.md](docs/desktop-app.md).
+
+## Quick start (from source)
 
     python3 -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
@@ -66,13 +77,23 @@ The console prints the hub (`ws://127.0.0.1:8777`) and stream
 (`http://127.0.0.1:8778/stream.mjpg`) URLs. Drop a die; the value prints.
 `--zoom 1.5` center-crops if the tray is small in frame. Ctrl-C stops.
 
+`--die d8` tells the watch which die is on the tray: only that die's templates
+compete and a read above its face count is rejected. The default `auto` lets
+every calibrated pool compete. The die can be changed live from the desktop
+app or the extension's toolbar popup (hub message `set_die`; the hub answers
+every client with `{"type": "die", "die": "d8"}` and stamps `die` on each
+`result`).
+
 **4. Send rolls to Roll20.** Open `chrome://extensions`, turn on Developer
 mode, choose Load unpacked, and pick `companion/extension/`. Open (or reload)
-your Roll20 game tab. Each roll now appears in chat as a roll card. For the
-Beyond20 dialog path see [docs/m2-checklist.md](docs/m2-checklist.md).
+your Roll20 game tab. Each roll now appears in chat as a roll card named after
+the selected die. Click the extension's toolbar icon to pick the die.
+`companion/extension/pack.sh` zips it for the Chrome Web Store.
 
-**5. Show it on stream (optional).** In OBS add a Browser source pointing at
-the local file `companion/overlay.html`. It draws the tray feed with a result
+**5. Show it on stream (optional).** In OBS add a Browser source with the URL
+`http://127.0.0.1:8778/overlay` (1920x1080). The Mac app can do this for you:
+enable OBS's WebSocket server (Tools → WebSocket Server Settings), paste the
+password into the app's Streaming card, click Set up OBS. It draws the tray feed with a result
 pop and nat 20 / nat 1 flair. Full picture-in-picture setup for Discord is in
 [docs/m3-obs-setup.md](docs/m3-obs-setup.md).
 
@@ -87,7 +108,7 @@ recorded clip.
 
 | Command | What it does |
 |---------|--------------|
-| `watch` | Watch the tray, read rolls, run the hub + stream |
+| `watch` | Watch the tray, read rolls, run the hub + stream (`--die d8` picks the die) |
 | `calibrate --die d20` | Capture per-face keypoint templates for one die |
 | `cameras` | List openable camera indices (`--json` adds thumbnails) |
 | `capture` | Preview the camera and save frames for a golden set |

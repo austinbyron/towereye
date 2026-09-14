@@ -33,7 +33,10 @@ handle, so the watch republishes its own frames as an MJPEG stream on
 `http://127.0.0.1:8778/stream.mjpg` (console prints the URL at startup). The
 overlay page shows that feed full-bleed under the result graphics.
 
-- OBS → Sources → Browser → Local file → `companion/overlay.html`
+- OBS → Sources → Browser → URL `http://127.0.0.1:8778/overlay` (the watch
+  serves the page; older notes said Local file → `companion/overlay.html`).
+  Or let the app do it: Streaming card → Set up OBS (needs OBS's WebSocket
+  server enabled under Tools → WebSocket Server Settings; paste the password).
 - Width 1920, Height 1080 (or your canvas size)
 - URL options: `?port=NNNN` (hub), `?feedport=NNNN` (stream), `?feed=0`
   (overlay only, no camera layer)
@@ -83,7 +86,7 @@ OBS remembers all of this; it is one-time.
 3. Discord camera on.
 
 - [ ] watch running (green dot in the app), hub + stream lines in its log
-- [ ] overlay.html in a plain browser tab shows the live tray
+- [ ] http://127.0.0.1:8778/overlay in a plain browser tab shows the live tray
 - [ ] OBS scene shows tray + overlay, virtual camera started
 - [ ] Drop a die: number pops on the overlay over the tray
 - [ ] Roll until a 20 lands: gold burst visible in Discord

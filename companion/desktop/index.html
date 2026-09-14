@@ -5,62 +5,189 @@
 <title>towereye</title>
 <style>
   * { box-sizing: border-box; margin: 0; }
-  body { font: 14px/1.4 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; background: #12161c; color: #e6ebf2; padding: 16px; }
+  body { font: 14px/1.45 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; background: #12161c; color: #e6ebf2; padding: 18px 20px 14px; min-height: 100vh; display: flex; flex-direction: column; }
   h1 { font-size: 15px; font-weight: 600; letter-spacing: .3px; display: flex; align-items: center; gap: 10px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: #5b6675; display: inline-block; }
-  .dot.on { background: #3ddc84; }
-  .dot.warn { background: #f9a825; }
-  section { margin-top: 16px; }
-  .row { display: flex; align-items: center; gap: 10px; }
-  button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 0; cursor: pointer; background: #2a3441; color: #e6ebf2; }
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  p.lead { color: #aab6c6; margin-bottom: 14px; }
+  .muted { color: #8b97a8; font-size: 12px; }
+  button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 9px; border: 0; cursor: pointer; background: #2a3441; color: #e6ebf2; }
   button.primary { background: #3ddc84; color: #0b1a10; }
   button.danger { background: #e0574f; color: #fff; }
-  button:disabled { opacity: .45; cursor: default; }
-  #cams { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
-  .cam { border: 2px solid transparent; border-radius: 10px; overflow: hidden; background: #1b222b; cursor: pointer; }
+  button.big { font-size: 16px; padding: 13px 22px; }
+  button.ghost { background: transparent; color: #aab6c6; }
+  button:disabled { opacity: .4; cursor: default; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .nav { display: flex; justify-content: space-between; margin-top: 18px; }
+
+  /* stepper */
+  .steps { display: flex; align-items: center; margin: 16px 0 20px; }
+  .step { display: flex; align-items: center; gap: 8px; color: #6f7b8b; font-weight: 600; cursor: pointer; }
+  .step .n { width: 24px; height: 24px; border-radius: 50%; background: #232b36; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+  .step.done .n { background: #1f5c3a; color: #d9ffe8; }
+  .step.cur { color: #e6ebf2; }
+  .step.cur .n { background: #3ddc84; color: #0b1a10; }
+  .steps .line { flex: 1; height: 2px; background: #232b36; margin: 0 12px; }
+
+  /* camera */
+  #cams { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+  .cam { border: 2px solid transparent; border-radius: 12px; overflow: hidden; background: #1b222b; cursor: pointer; }
   .cam.selected { border-color: #3ddc84; }
   .cam img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
-  .cam .cap { padding: 6px 8px; font-size: 12px; color: #aab6c6; }
-  #feed { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 10px; object-fit: cover; display: none; }
-  #feed.on { display: block; }
-  #last { font-size: 40px; font-weight: 700; margin-top: 6px; }
-  #last small { font-size: 13px; font-weight: 500; color: #aab6c6; margin-left: 8px; }
-  #log { margin-top: 8px; height: 150px; overflow: auto; background: #0b0e12; border-radius: 8px; padding: 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #aab6c6; white-space: pre-wrap; }
-  .muted { color: #8b97a8; font-size: 12px; }
-  .status { display: flex; gap: 14px; font-size: 12px; color: #aab6c6; }
+  .cam .cap { padding: 6px 10px; font-size: 12px; color: #aab6c6; display: flex; justify-content: space-between; }
+  .chosen { display: flex; align-items: center; gap: 12px; background: #1b222b; border-radius: 12px; padding: 10px; margin-top: 12px; }
+  .chosen img { width: 120px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; background: #000; }
+
+  /* feed */
+  #feedWrap { position: relative; margin: 12px 0; }
+  #feed { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; object-fit: cover; display: block; }
+  #feedNote { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8b97a8; font-size: 13px; text-align: center; padding: 20px; }
+  #feedWrap.live #feedNote { display: none; }
+  #rollPop { position: absolute; right: 14px; bottom: 12px; font-size: 44px; font-weight: 800; line-height: 1; text-shadow: 0 2px 12px rgba(0,0,0,.8); display: none; }
+  #rollPop small { display: block; font-size: 12px; font-weight: 500; color: #cfd8e3; text-align: right; }
+  #rollPop.on { display: block; }
+  #rollPop.nat20 { color: #ffd54a; }
+  #rollPop.nat1 { color: #ff6b6b; }
+
+  /* dice */
+  .die { display: grid; grid-template-columns: 44px 1fr auto auto; align-items: center; gap: 12px; padding: 5px 0; border-bottom: 1px solid #1d2531; }
+  .die button { padding: 6px 12px; font-size: 13px; }
+  #stepDice #feed { max-height: 230px; }
+  #stepPlay #feed { max-height: 260px; }
+  .die .name { font-weight: 700; }
+  .bar { height: 8px; background: #232b36; border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #3ddc84; width: 0; }
+  .die .count { color: #aab6c6; font-size: 12px; min-width: 88px; text-align: right; }
+  .die.full .count { color: #3ddc84; }
+  #calPanel { background: #1b222b; border-radius: 12px; padding: 14px; margin-top: 12px; }
+  #calFace { font-size: 26px; font-weight: 800; }
+  #faces { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .face { min-width: 40px; padding: 5px 7px; border-radius: 7px; background: #2a3441; font-size: 12px; text-align: center; color: #aab6c6; cursor: pointer; }
+  .face.done { background: #1f5c3a; color: #d9ffe8; }
+  .face.cur { outline: 2px solid #3ddc84; }
+
+  /* play */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+  .chip { padding: 8px 14px; border-radius: 999px; background: #232b36; color: #aab6c6; font-weight: 700; cursor: pointer; border: 2px solid transparent; }
+  .chip.on { background: #1f5c3a; color: #d9ffe8; border-color: #3ddc84; }
+  .chip.uncal { opacity: .55; }
+  label.check { display: flex; align-items: center; gap: 8px; color: #aab6c6; }
+  .hint { background: #1b222b; border-radius: 10px; padding: 10px 12px; color: #aab6c6; font-size: 12px; margin-top: 12px; }
+  .card { background: #1b222b; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
+  .card h3 { font-size: 14px; margin-bottom: 6px; display: flex; gap: 8px; align-items: baseline; }
+  .card code { background: #0b0e12; padding: 3px 6px; border-radius: 5px; font: 12px ui-monospace, Menlo, monospace; }
+  .card input[type=password] { font: inherit; padding: 7px 9px; border-radius: 7px; border: 1px solid #333c48; background: #12161c; color: #e6ebf2; width: 190px; }
+  .card .note { color: #aab6c6; font-size: 12px; margin-top: 8px; }
+  .card .note.ok { color: #3ddc84; }
+  .card .note.bad { color: #ff8a80; }
+
+  /* details */
+  details { margin-top: auto; padding-top: 16px; }
+  summary { cursor: pointer; color: #8b97a8; font-size: 12px; display: flex; gap: 14px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #5b6675; display: inline-block; margin-right: 5px; }
+  .dot.on { background: #3ddc84; }
+  .dot.warn { background: #f9a825; }
+  #log { margin-top: 8px; height: 140px; overflow: auto; background: #0b0e12; border-radius: 8px; padding: 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #aab6c6; white-space: pre-wrap; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<h1><span class="dot" id="dotWatch"></span> towereye</h1>
-<div class="status">
-  <span><span class="dot" id="dotHub"></span> hub</span>
-  <span><span class="dot" id="dotStream"></span> stream</span>
-  <span id="envNote" class="muted"></span>
+<h1>🎲 towereye <span class="muted" id="envNote"></span></h1>
+
+<div class="steps">
+  <div class="step" data-step="camera"><span class="n">1</span> Camera</div>
+  <div class="line"></div>
+  <div class="step" data-step="dice"><span class="n">2</span> Dice</div>
+  <div class="line"></div>
+  <div class="step" data-step="play"><span class="n">3</span> Play</div>
 </div>
 
-<section>
+<!-- shared live feed; JS moves it into the active step -->
+<div id="feedWrap" hidden>
+  <img id="feed" alt="">
+  <div id="feedNote">starting the camera…</div>
+  <div id="rollPop"></div>
+</div>
+
+<section id="stepCamera">
+  <h2>Point a camera at your tray</h2>
+  <p class="lead">Any camera works: a webcam on an arm, an old iPhone as Continuity Camera, or a phone camera app. Aim it straight down into the tray, then find it here.</p>
   <div class="row">
-    <strong>Tray camera</strong>
-    <button id="scan">Scan cameras</button>
-    <span class="muted" id="scanNote">pick the one that shows the tray</span>
+    <button id="scan" class="primary big">Find my camera</button>
+    <span class="muted" id="scanNote"></span>
+  </div>
+  <div id="chosen" class="chosen" hidden>
+    <img id="chosenImg" alt="">
+    <div><strong>Tray camera chosen</strong><br><span class="muted" id="chosenCap"></span></div>
   </div>
   <div id="cams"></div>
+  <div class="nav">
+    <span></span>
+    <button id="toDice" class="primary" disabled>Next: your dice ▶</button>
+  </div>
 </section>
 
-<section class="row">
-  <button id="start" class="primary" disabled>Start watching</button>
-  <button id="stop" class="danger" disabled>Stop</button>
-  <label class="muted" style="margin-left:auto"><input type="checkbox" id="obs"> open OBS + virtual cam</label>
+<section id="stepDice" hidden>
+  <h2>Teach it your dice</h2>
+  <p class="lead">Show each face once or twice and towereye learns that die's lettering. Uncalibrated dice still work through Apple's text recognition, just less reliably.</p>
+  <div id="diceFeedSlot"></div>
+  <div id="diceList"></div>
+  <div id="calPanel" hidden>
+    <div class="row" style="justify-content:space-between">
+      <span id="calFace">face 1</span>
+      <button id="calDone" class="ghost">Done calibrating</button>
+    </div>
+    <div class="muted" id="calMsg" style="margin-top:4px"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="calBack">◀</button>
+      <button id="calSave" class="primary big">Save this face</button>
+      <button id="calNext">▶</button>
+    </div>
+    <div id="faces"></div>
+  </div>
+  <div class="nav">
+    <button id="backCamera" class="ghost">◀ Camera</button>
+    <button id="toPlay" class="primary">Next: play ▶</button>
+  </div>
 </section>
 
-<section>
-  <img id="feed" alt="">
-  <div id="last"><span class="muted">no rolls yet</span></div>
+<section id="stepPlay" hidden>
+  <h2>Roll</h2>
+  <p class="lead">Which die is on the tray?</p>
+  <div class="chips" id="chips"></div>
+  <div class="row">
+    <button id="start" class="primary big" disabled>Start reading rolls</button>
+    <button id="stop" class="danger big" hidden>Stop</button>
+  </div>
+  <div id="playFeedSlot"></div>
+  <div class="hint" id="extHint">Rolls appear in your Roll20 chat through the towereye Chrome extension; pick the die from its toolbar icon or here.</div>
+  <div class="card" id="streamCard">
+    <h3>Show it on stream <span class="muted">Discord, Twitch… via OBS</span></h3>
+    <div class="row" style="flex-wrap:wrap">
+      <span class="muted">overlay</span> <code id="overlayUrl">http://127.0.0.1:8778/overlay</code>
+      <button id="copyOverlay" class="ghost" style="padding:4px 8px">copy</button>
+    </div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <input type="password" id="obsPass" placeholder="OBS WebSocket password">
+      <button id="obsSetup" class="primary">Set up OBS</button>
+      <label class="check"><input type="checkbox" id="obs"> open OBS on Start</label>
+    </div>
+    <div class="note" id="obsNote">Set up OBS adds the overlay as a browser source in your current scene and starts the virtual camera. One-time in OBS: Tools → WebSocket Server Settings → Enable, copy the password here. Then in Discord choose “OBS Virtual Camera”.</div>
+  </div>
+  <div class="nav">
+    <button id="backDice" class="ghost">◀ Dice</button>
+    <span></span>
+  </div>
 </section>
 
-<section>
+<details>
+  <summary>
+    <span><span class="dot" id="dotWatch"></span><span id="watchWord">not reading</span></span>
+    <span><span class="dot" id="dotHub"></span>hub 8777</span>
+    <span><span class="dot" id="dotStream"></span>stream 8778</span>
+    <span style="margin-left:auto">details</span>
+  </summary>
   <div id="log"></div>
-</section>
+</details>
 
 <script>
 (function () {
@@ -68,122 +195,382 @@
   const $ = (id) => document.getElementById(id);
   const HUB = "ws://127.0.0.1:8777";
   const STREAM = "http://127.0.0.1:8778";
-  let selected = null;
-  let running = false;
-  try { selected = JSON.parse(localStorage.getItem("camera")); } catch {}
+  const DICE = ["d20", "d12", "d10", "d8", "d6", "d4"];
+  const FACES = { d4: 4, d6: 6, d8: 8, d10: 10, d12: 12, d20: 20 };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  let selected = store.get("camera", null);
+  let selectedThumb = store.get("cameraThumb", null);
+  let die = store.get("die", "auto");
+  let running = false, starting = false;
+  let pools = {};
+  let hubWs = null;
+  let scanError = null;
 
   function log(line) {
     const el = $("log");
     el.textContent += line + "\n";
     el.scrollTop = el.scrollHeight;
   }
-
-  function setRunning(on, starting) {
-    const changed = on !== running;
-    running = on;
-    $("dotWatch").className = "dot" + (on ? (starting ? " warn" : " on") : "");
-    // Start is always allowed once a camera is chosen (it replaces a running
-    // watch) except while one is still booting
-    $("start").disabled = selected === null || !!starting;
-    $("start").textContent = starting ? "Starting…" : on ? "Restart watching" : "Start watching";
-    $("stop").disabled = !on || !!starting;
-    $("scan").disabled = on;
-    $("scanNote").textContent = on ? "stop the watch to rescan (it owns the camera)" : "pick the one that shows the tray";
-    if (!on) hideFeed();
+  function hubSend(obj) {
+    if (hubWs && hubWs.readyState === WebSocket.OPEN) hubWs.send(JSON.stringify(obj));
   }
 
-  // The preview follows the stream's health, not the process state: attaching
-  // before the stream is up leaves a broken image behind.
-  let feedUp = false;
-  function showFeed() {
-    if (feedUp) return;
-    feedUp = true;
-    $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
-    $("feed").classList.add("on");
+  // ---- steps ----
+  let step = null;
+  function showStep(name) {
+    step = name;
+    $("stepCamera").hidden = name !== "camera";
+    $("stepDice").hidden = name !== "dice";
+    $("stepPlay").hidden = name !== "play";
+    document.querySelectorAll(".step").forEach((el) => {
+      const s = el.dataset.step;
+      el.classList.toggle("cur", s === name);
+      el.classList.toggle("done", (s === "camera" && selected !== null) || (s === "dice" && Object.values(pools).some(calibrated)));
+    });
+    const slot = name === "dice" ? $("diceFeedSlot") : name === "play" ? $("playFeedSlot") : null;
+    const wrap = $("feedWrap");
+    if (slot) { slot.appendChild(wrap); wrap.hidden = false; } else { wrap.hidden = true; }
+    if (name === "dice") enterDice();
+    if (name !== "dice" && cal.die) hubSend({ type: "calibrate_stop" });
+    if (name === "play") store.set("setupDone", true);
+    renderChips();
   }
-  function hideFeed() {
-    feedUp = false;
-    $("feed").classList.remove("on");
-    $("feed").removeAttribute("src");
-  }
-  $("feed").onerror = hideFeed;
+  document.querySelectorAll(".step").forEach((el) => {
+    el.onclick = () => { if (el.dataset.step === "camera" || selected !== null) showStep(el.dataset.step); };
+  });
+  $("toDice").onclick = () => showStep("dice");
+  $("toPlay").onclick = () => showStep("play");
+  $("backCamera").onclick = () => showStep("camera");
+  $("backDice").onclick = () => showStep("dice");
 
+  // ---- camera ----
+  function renderChosen() {
+    $("chosen").hidden = selected === null;
+    $("toDice").disabled = selected === null;
+    if (selected !== null) {
+      // a camera remembered before thumbnails were stored has no picture yet
+      $("chosenImg").hidden = !selectedThumb;
+      if (selectedThumb) $("chosenImg").src = selectedThumb;
+      $("chosenCap").textContent = `camera ${selected} · click Find my camera to change`;
+    }
+  }
   function renderCams(cams) {
     const grid = $("cams");
     grid.innerHTML = "";
     for (const c of cams) {
       const card = document.createElement("div");
       card.className = "cam" + (c.index === selected ? " selected" : "");
-      card.innerHTML = `<img src="${c.thumbnail || ""}"><div class="cap">index ${c.index} · ${c.width}×${c.height}</div>`;
+      card.innerHTML = `<img src="${c.thumbnail || ""}"><div class="cap"><span>camera ${c.index}</span><span>${c.width}×${c.height}</span></div>`;
       card.onclick = () => {
-        selected = c.index;
-        localStorage.setItem("camera", JSON.stringify(selected));
+        selected = c.index; selectedThumb = c.thumbnail || null;
+        store.set("camera", selected); store.set("cameraThumb", selectedThumb);
         document.querySelectorAll(".cam").forEach((n) => n.classList.remove("selected"));
         card.classList.add("selected");
-        $("start").disabled = false;
+        renderChosen();
+        $("scanNote").textContent = "";
       };
       grid.appendChild(card);
     }
-    if (!cams.length) $("scanNote").textContent = "no cameras opened — is the phone awake and nearby?";
+    if (!cams.length) $("scanNote").textContent = "no cameras answered — is it plugged in / is the phone awake and nearby?";
+    else $("scanNote").textContent = "click the one that shows your tray";
   }
-
   $("scan").onclick = async () => {
     $("scan").disabled = true;
-    $("scanNote").textContent = "scanning — about 10 seconds, each camera gets a moment to expose…";
+    scanError = null;
+    if (running) { $("scanNote").textContent = "pausing the camera…"; await window.towereye.stop(); }
+    $("scanNote").textContent = "looking — about 10 seconds, each camera gets a moment to expose…";
     const res = await window.towereye.cameras();
-    $("scan").disabled = running;
-    if (res.error) { $("scanNote").textContent = res.error; return; }
-    $("scanNote").textContent = "pick the one that shows the tray";
+    $("scan").disabled = false;
+    if (res.error) { scanError = res.error; $("scanNote").textContent = res.error; log("scan: " + res.error); return; }
     renderCams(res.cameras);
   };
 
-  try { $("obs").checked = localStorage.getItem("obs") === "1"; } catch {}
-  $("obs").onchange = () => localStorage.setItem("obs", $("obs").checked ? "1" : "0");
-  $("start").onclick = async () => {
-    const res = await window.towereye.start(selected, $("obs").checked);
-    if (!res.ok) log(res.error);
-  };
-  $("stop").onclick = () => window.towereye.stop();
-
-  window.towereye.onLog(log);
-  window.towereye.onState((s) => setRunning(s.running, s.starting));
-
-  // hub: last roll + connection dot
-  function connectHub() {
-    const ws = new WebSocket(HUB);
-    ws.onopen = () => { $("dotHub").className = "dot on"; };
-    ws.onclose = () => { $("dotHub").className = "dot"; setTimeout(connectHub, 3000); };
-    ws.onerror = () => ws.close();
-    ws.onmessage = (m) => {
-      let e; try { e = JSON.parse(m.data); } catch { return; }
-      if (e.type === "history") return;
-      if (e.type === "result") {
-        $("last").innerHTML = `${e.value}<small>${e.reader} ${Number(e.confidence).toFixed(2)}</small>`;
-      } else if (e.type === "reroll") {
-        $("last").innerHTML = `<span class="muted">die at the tray edge — reroll</span>`;
-      } else if (e.type === "unread") {
-        $("last").innerHTML = `<span class="muted">couldn't read it — reroll</span>`;
-      }
-    };
+  // ---- watch process ----
+  async function startWatch() {
+    if (selected === null) return false;
+    const res = await window.towereye.start(selected, $("obs").checked, die);
+    if (!res.ok) { log(res.error); return false; }
+    return true;
   }
-  connectHub();
+  function setRunning(on, boot) {
+    running = on; starting = !!boot;
+    $("dotWatch").className = "dot" + (on ? (boot ? " warn" : " on") : "");
+    $("watchWord").textContent = boot ? "starting" : on ? "reading rolls" : "not reading";
+    $("start").hidden = on && !boot;
+    $("start").disabled = selected === null || boot;
+    $("start").textContent = boot ? "Starting…" : "Start reading rolls";
+    $("stop").hidden = !on || boot;
+    if (!on) { feedDown(); $("feedNote").textContent = step === "dice" ? "starting the camera…" : "press Start to see the tray"; }
+  }
+  $("start").onclick = startWatch;
+  $("stop").onclick = () => window.towereye.stop();
+  try { $("obs").checked = store.get("obs", false); } catch {}
+  $("obs").onchange = () => store.set("obs", $("obs").checked);
 
-  // stream dot: poll the still endpoint
+  // ---- OBS: overlay URL + one-click scene setup over obs-websocket v5 ----
+  const OVERLAY_URL = `${STREAM}/overlay`;
+  const OBS_INPUT = "towereye overlay";
+  $("overlayUrl").textContent = OVERLAY_URL;
+  $("copyOverlay").onclick = async () => { try { await navigator.clipboard.writeText(OVERLAY_URL); $("copyOverlay").textContent = "copied"; setTimeout(() => { $("copyOverlay").textContent = "copy"; }, 1500); } catch {} };
+  $("obsPass").value = store.get("obsPass", "");
+  $("obsPass").onchange = () => store.set("obsPass", $("obsPass").value);
+  function obsNote(text, cls) { const n = $("obsNote"); n.textContent = text; n.className = "note" + (cls ? " " + cls : ""); }
+  async function sha256b64(text) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return btoa(String.fromCharCode(...new Uint8Array(buf)));
+  }
+  function obsConnect(password) {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket("ws://127.0.0.1:4455");
+      const pending = new Map();
+      let seq = 0;
+      const api = {
+        request(type, data) {
+          return new Promise((res, rej) => {
+            const id = String(++seq);
+            pending.set(id, { res, rej });
+            ws.send(JSON.stringify({ op: 6, d: { requestType: type, requestId: id, requestData: data || {} } }));
+          });
+        },
+        close() { ws.close(); },
+      };
+      ws.onerror = () => reject(new Error("no OBS WebSocket on port 4455"));
+      ws.onclose = () => { for (const p of pending.values()) p.rej(new Error("OBS closed the connection")); pending.clear(); };
+      ws.onmessage = async (m) => {
+        let msg; try { msg = JSON.parse(m.data); } catch { return; }
+        if (msg.op === 0) {
+          let authentication;
+          if (msg.d.authentication) {
+            if (!password) return reject(new Error("OBS asks for a password: copy it from Tools → WebSocket Server Settings"));
+            const secret = await sha256b64(password + msg.d.authentication.salt);
+            authentication = await sha256b64(secret + msg.d.authentication.challenge);
+          }
+          ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1, authentication, eventSubscriptions: 0 } }));
+        } else if (msg.op === 2) {
+          resolve(api);
+        } else if (msg.op === 7) {
+          const p = pending.get(msg.d.requestId);
+          if (!p) return;
+          pending.delete(msg.d.requestId);
+          if (msg.d.requestStatus && msg.d.requestStatus.result) p.res(msg.d.responseData || {});
+          else p.rej(new Error(`${msg.d.requestType}: ${(msg.d.requestStatus || {}).comment || "failed"}`));
+        }
+      };
+      setTimeout(() => reject(new Error("OBS didn't answer (is it open, WebSocket server enabled?)")), 6000);
+    });
+  }
+  async function setupObs() {
+    $("obsSetup").disabled = true;
+    obsNote("connecting to OBS…");
+    let obs;
+    try {
+      obs = await obsConnect($("obsPass").value);
+    } catch (e) {
+      obsNote(`${e.message}. Opening OBS — click Set up OBS again once it is up.`, "bad");
+      window.towereye.openObs();
+      $("obsSetup").disabled = false;
+      return;
+    }
+    try {
+      const { currentProgramSceneName: scene } = await obs.request("GetCurrentProgramScene");
+      const { inputs } = await obs.request("GetInputList", { inputKind: "browser_source" });
+      const settings = { url: OVERLAY_URL, width: 1920, height: 1080, shutdown: false, restart_when_active: false };
+      if (inputs.some((i) => i.inputName === OBS_INPUT)) {
+        await obs.request("SetInputSettings", { inputName: OBS_INPUT, inputSettings: settings });
+        const { sceneItems } = await obs.request("GetSceneItemList", { sceneName: scene });
+        if (!sceneItems.some((i) => i.sourceName === OBS_INPUT)) await obs.request("CreateSceneItem", { sceneName: scene, sourceName: OBS_INPUT });
+      } else {
+        await obs.request("CreateInput", { sceneName: scene, inputName: OBS_INPUT, inputKind: "browser_source", inputSettings: settings });
+      }
+      const { outputActive } = await obs.request("GetVirtualCamStatus");
+      if (!outputActive) await obs.request("StartVirtualCam");
+      obsNote(`OBS is set: “${OBS_INPUT}” is in scene “${scene}” and the virtual camera is on. In Discord, pick “OBS Virtual Camera”.`, "ok");
+      log("obs: overlay source ready, virtual camera on");
+    } catch (e) {
+      obsNote(`OBS said: ${e.message}`, "bad");
+    } finally {
+      obs.close();
+      $("obsSetup").disabled = false;
+    }
+  }
+  $("obsSetup").onclick = setupObs;
+
+  // ---- feed ----
+  let feedUp = false;
+  function feedLive() {
+    if (feedUp) return;
+    feedUp = true;
+    $("feed").src = `${STREAM}/stream.mjpg?t=${Date.now()}`;
+    $("feedWrap").classList.add("live");
+  }
+  function feedDown() {
+    feedUp = false;
+    $("feedWrap").classList.remove("live");
+    $("feed").removeAttribute("src");
+  }
+  $("feed").onerror = feedDown;
   async function pollStream() {
     try {
       const r = await fetch(`${STREAM}/frame.jpg`, { cache: "no-store" });
       $("dotStream").className = "dot" + (r.ok ? " on" : "");
-      if (r.ok) showFeed(); else hideFeed();
-    } catch { $("dotStream").className = "dot"; hideFeed(); }
-    setTimeout(pollStream, 3000);
+      if (r.ok) feedLive(); else feedDown();
+    } catch { $("dotStream").className = "dot"; feedDown(); }
+    setTimeout(pollStream, 2000);
   }
-  pollStream();
+  let popTimer = null;
+  function showRoll(e) {
+    const pop = $("rollPop");
+    const d = e.die && e.die !== "auto" ? e.die : "";
+    pop.innerHTML = `${e.value}<small>${d}</small>`;
+    pop.className = "on" + (d === "d20" || d === "" ? (e.value === 20 ? " nat20" : e.value === 1 ? " nat1" : "") : "");
+    clearTimeout(popTimer);
+    popTimer = setTimeout(() => { pop.className = ""; }, 8000);
+  }
 
+  // ---- dice ----
+  function calibrated(counts) { return Object.values(counts || {}).some((n) => n > 0); }
+  function progress(counts) {
+    const faces = Object.keys(counts || {}).length;
+    const done = Object.values(counts || {}).filter((n) => n >= 2).length;
+    return { faces, done };
+  }
+  function renderDice() {
+    const list = $("diceList");
+    list.innerHTML = "";
+    for (const d of DICE) {
+      const counts = pools[d] || {};
+      const { faces, done } = progress(counts);
+      const row = document.createElement("div");
+      row.className = "die" + (faces && done === faces ? " full" : "");
+      const pct = faces ? Math.round((done / faces) * 100) : 0;
+      const label = !faces ? "" : done === faces ? "all faces ✓" : done ? `${done}/${faces} faces` : "not calibrated";
+      const btn = !faces || !done ? "Calibrate" : done === faces ? "Add more" : "Continue";
+      row.innerHTML = `<span class="name">${d}</span><div class="bar"><i style="width:${pct}%"></i></div><span class="count">${label}</span><button data-die="${d}">${btn}</button>`;
+      row.querySelector("button").onclick = () => hubSend({ type: "calibrate_start", die: d });
+      list.appendChild(row);
+    }
+  }
+  function enterDice() {
+    renderDice();
+    if (!running && !starting) {
+      $("feedNote").textContent = "starting the camera…";
+      startWatch();
+    }
+    hubSend({ type: "templates" });
+  }
+
+  const cal = { die: null, faces: 0, value: 1, counts: {} };
+  function renderFaces() {
+    const grid = $("faces");
+    grid.innerHTML = "";
+    for (let v = 1; v <= cal.faces; v++) {
+      const n = cal.counts[String(v)] || 0;
+      const chip = document.createElement("div");
+      chip.className = "face" + (n >= 2 ? " done" : "") + (v === cal.value ? " cur" : "");
+      chip.textContent = n ? `${v} ·${n}` : `${v}`;
+      chip.onclick = () => { cal.value = v; renderFaces(); };
+      grid.appendChild(chip);
+    }
+    $("calFace").textContent = `${cal.die}: put face ${cal.value} up`;
+    $("calBack").disabled = cal.value <= 1;
+    $("calNext").disabled = cal.value >= cal.faces;
+  }
+  function onCalibrateEvent(e) {
+    if (e.type === "templates") { pools = e.pools || {}; renderDice(); renderChips(); showStepMarks(); return true; }
+    if (e.type === "calibrating") {
+      if (e.die) {
+        cal.die = e.die; cal.faces = e.faces; cal.counts = e.counts;
+        cal.value = firstUndone() || 1;
+        $("calPanel").hidden = false; $("diceList").hidden = true;
+        $("calMsg").textContent = "wait for focus, then Save. Two saves per face is enough; nudge the rotation between them.";
+        renderFaces();
+      } else {
+        cal.die = null; $("calPanel").hidden = true; $("diceList").hidden = false;
+        hubSend({ type: "templates" });
+      }
+      return true;
+    }
+    if (e.type === "template_saved") {
+      if (e.die === cal.die) {
+        cal.counts = e.counts;
+        const n = e.counts[String(e.value)];
+        if (n >= 2 && cal.value === e.value && cal.value < cal.faces) {
+          cal.value++;
+          $("calMsg").textContent = `face ${e.value} done — now face ${cal.value}`;
+        } else {
+          $("calMsg").textContent = `saved face ${e.value} (${n} so far)`;
+        }
+        renderFaces();
+      }
+      return true;
+    }
+    if (e.type === "calibrate_error") { $("calMsg").textContent = e.reason; return true; }
+    return false;
+  }
+  function firstUndone() {
+    for (let v = 1; v <= cal.faces; v++) if ((cal.counts[String(v)] || 0) < 2) return v;
+    return 0;
+  }
+  $("calSave").onclick = () => hubSend({ type: "calibrate_save", value: cal.value });
+  $("calBack").onclick = () => { if (cal.value > 1) { cal.value--; renderFaces(); } };
+  $("calNext").onclick = () => { if (cal.value < cal.faces) { cal.value++; renderFaces(); } };
+  $("calDone").onclick = () => hubSend({ type: "calibrate_stop" });
+  function showStepMarks() { document.querySelectorAll(".step").forEach((el) => { if (el.dataset.step === "dice") el.classList.toggle("done", Object.values(pools).some(calibrated)); }); }
+
+  // ---- play: die chips ----
+  function renderChips() {
+    const box = $("chips");
+    box.innerHTML = "";
+    for (const d of ["auto", ...DICE]) {
+      const chip = document.createElement("div");
+      const uncal = d !== "auto" && !calibrated(pools[d]);
+      chip.className = "chip" + (d === die ? " on" : "") + (uncal ? " uncal" : "");
+      chip.textContent = d === "auto" ? "any die" : d;
+      chip.title = uncal ? `${d} isn't calibrated yet: reads fall back to text recognition` : "";
+      chip.onclick = () => { die = d; store.set("die", die); hubSend({ type: "set_die", die }); renderChips(); };
+      box.appendChild(chip);
+    }
+  }
+
+  // ---- hub ----
+  function connectHub() {
+    const ws = new WebSocket(HUB);
+    hubWs = ws;
+    ws.onopen = () => {
+      $("dotHub").className = "dot on";
+      hubSend({ type: "set_die", die });   // this window's choice wins on connect
+      hubSend({ type: "templates" });
+    };
+    ws.onclose = () => { $("dotHub").className = "dot"; cal.die = null; $("calPanel").hidden = true; $("diceList").hidden = false; setTimeout(connectHub, 3000); };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (m) => {
+      let e; try { e = JSON.parse(m.data); } catch { return; }
+      if (e.type === "history") return;
+      if (e.type === "die") { if (e.die !== die) { die = e.die; store.set("die", die); renderChips(); } return; }
+      if (onCalibrateEvent(e)) return;
+      if (e.type === "result") { showRoll(e); log(`roll ${e.value} (${e.die || "auto"}, ${e.reader} ${Number(e.confidence).toFixed(2)})`); }
+      else if (e.type === "reroll") log("die at the tray edge — reroll");
+      else if (e.type === "unread") log("couldn't read that one — reroll");
+    };
+  }
+
+  // ---- boot ----
+  window.towereye.onLog(log);
+  window.towereye.onState((s) => setRunning(s.running, s.starting));
   window.towereye.env().then((env) => {
-    if (!env.pythonOk) { $("envNote").textContent = `no .venv in ${env.repo}`; $("start").disabled = true; }
+    if (!env.coreOk) { $("envNote").textContent = `towereye core not found: ${env.core}`; $("start").disabled = true; }
+    else if (!env.packaged) $("envNote").textContent = "dev";
     setRunning(env.running);
-    if (selected !== null && !env.running) $("scanNote").textContent = `remembered camera index ${selected} — scan to confirm`;
+    renderChosen();
+    const forced = new URLSearchParams(location.search).get("step"); // dev: ?step=dice
+    showStep(forced || (selected !== null && store.get("setupDone", false) ? "play" : "camera"));
   });
+  connectHub();
+  pollStream();
 })();
 </script>
 </body>

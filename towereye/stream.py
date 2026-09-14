@@ -59,6 +59,14 @@ class FramePublisher:
             return self._seq, self._jpeg
 
 
+def overlay_html() -> bytes:
+    """The OBS overlay page, shipped inside the package so a Browser source
+    can point at http://127.0.0.1:<port>/overlay instead of a file."""
+    from importlib.resources import files
+
+    return files("towereye").joinpath("static/overlay.html").read_bytes()
+
+
 class _Handler(BaseHTTPRequestHandler):
     publisher: FramePublisher  # set on the server class
 
@@ -71,6 +79,15 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path in ("/overlay", "/overlay.html"):
+            body = overlay_html()
+            self.send_response(200)
+            self._cors()
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/frame.jpg":
             jpeg = self.publisher.latest()
             if jpeg is None:

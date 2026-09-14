@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>towereye privacy policy</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 16px/1.6 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; background: #12161c; color: #e6ebf2; padding: 40px 20px 60px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 30px; margin-bottom: 6px; } h2 { font-size: 18px; margin: 28px 0 8px; }
+  p, li { color: #cfd8e3; } ul { padding-left: 22px; }
+  a { color: #7fe0a9; } .muted { color: #8b97a8; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="muted">towereye Mac app and towereye companion Chrome extension · effective 2026-09-14</p>
+
+  <h2>Summary</h2>
+  <p>towereye collects no personal data. Nothing you do with it is sent to us or to any third party.</p>
+
+  <h2>The Mac app</h2>
+  <ul>
+    <li>The camera feed is processed on your computer to read dice values. Frames are not uploaded anywhere.</li>
+    <li>Roll results, frame snapshots used for reading, and the dice templates you calibrate are stored locally in <code>~/Library/Application Support/towereye</code>. You can delete that folder at any time.</li>
+    <li>The app opens two local-only network ports (a WebSocket hub and a camera stream) bound to 127.0.0.1 so the extension and OBS on the same computer can receive rolls and the tray picture.</li>
+    <li>If you use the OBS setup feature, the OBS WebSocket password you enter is stored locally in the app and used only to talk to OBS on your computer.</li>
+    <li>The app does not include analytics, crash reporting, or update checks that identify you.</li>
+  </ul>
+
+  <h2>The Chrome extension</h2>
+  <ul>
+    <li>It runs only on <code>app.roll20.net</code> pages.</li>
+    <li>It connects to the towereye app on your computer at <code>ws://127.0.0.1:8777</code> to receive roll results and posts them into the Roll20 chat box of the open game. It reads nothing else from the page.</li>
+    <li>It stores nothing, makes no remote requests, and contains no remote code.</li>
+    <li>Permissions requested: a content script on app.roll20.net and a toolbar popup. No other permissions.</li>
+  </ul>
+
+  <h2>Roll20 and OBS</h2>
+  <p>Rolls you post into Roll20 are handled by Roll20 under its own terms. The OBS overlay is a local web page served by the app to OBS on your computer.</p>
+
+  <h2>Contact</h2>
+  <p>Questions: open an issue at <a href="https://github.com/austinbyron/towereye/issues">github.com/austinbyron/towereye</a>.</p>
+</main>
+</body>
+</html>

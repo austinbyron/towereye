@@ -85,3 +85,19 @@ def test_chain_passes_full_frame_when_no_die_found():
     reader = FakeReader("a", Reading(value=4, confidence=0.9, reader="a"))
     ReaderChain([reader]).read(FRAME)
     assert reader.seen is FRAME
+
+
+def test_chain_drops_values_above_the_die_face_count():
+    vision = FakeReader("vision", Reading(17, 0.9, "vision"))
+    chain = ReaderChain([vision], faces=lambda: 8)
+    assert chain.read(FRAME) is None
+    chain.faces = lambda: 20
+    assert chain.read(FRAME).value == 17
+    chain.faces = lambda: None  # auto: no gate
+    assert chain.read(FRAME).value == 17
+
+
+def test_chain_face_gate_lets_the_next_reader_try():
+    bad = FakeReader("a", Reading(17, 0.9, "a"))
+    good = FakeReader("b", Reading(5, 0.9, "b"))
+    assert ReaderChain([bad, good], faces=lambda: 8).read(FRAME).value == 5

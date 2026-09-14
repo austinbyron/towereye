@@ -6,3 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "towereye"
 version = "0.1.0"
 description = "Dice tower camera roll-reader"
+
+[tool.setuptools.package-data]
+towereye = ["static/*.html"]

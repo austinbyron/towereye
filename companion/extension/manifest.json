@@ -1,12 +1,31 @@
 {
   "manifest_version": 3,
   "name": "towereye companion",
-  "version": "0.2",
-  "description": "Fill Beyond20 manual-roll dialogs from the dice tower camera",
+  "version": "0.4.0",
+  "description": "Posts dice rolls read by the towereye dice tower camera into your Roll20 chat. Talks only to the towereye app on this computer.",
+  "homepage_url": "https://towereye.austinbyron.com",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "towereye: choose the die on the tray",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
   "content_scripts": [
     {
-      "matches": ["https://*.dndbeyond.com/*", "https://*.roll20.net/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://app.roll20.net/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

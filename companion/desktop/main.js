@@ -7,14 +7,27 @@ const { spawn, execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-const os = require("os");
-// Packaged app lives in /Applications; the Python side stays in the repo checkout.
-const REPO = process.env.TOWEREYE_REPO
-  || (app.isPackaged ? path.join(os.homedir(), "CodeProjects", "towereye") : path.resolve(__dirname, "..", ".."));
+// Packaged: the frozen CLI (PyInstaller, see packaging/towereye.spec) ships in
+// Resources/towereye-core and data lives in ~/Library/Application Support.
+// Dev (or TOWEREYE_REPO set): the repo's .venv python and the repo dir.
+const REPO = process.env.TOWEREYE_REPO || path.resolve(__dirname, "..", "..");
+const PACKAGED = app.isPackaged && !process.env.TOWEREYE_REPO;
+const CORE = path.join(process.resourcesPath || "", "towereye-core", "towereye-core");
 const PYTHON = path.join(REPO, ".venv", "bin", "python");
-const LOG = path.join(REPO, ".towereye-watch.log");
-const PIDFILE = path.join(REPO, ".towereye-watch.pid");
+const DATA = PACKAGED ? path.join(app.getPath("appData"), "towereye") : REPO;
+fs.mkdirSync(DATA, { recursive: true }); // spawn cwd must exist before the first scan
+const LOG = path.join(DATA, ".towereye-watch.log");
+const PIDFILE = path.join(DATA, ".towereye-watch.pid");
 const PORTS = [8777, 8778];
+
+function coreCommand(args) {
+  // [file, argv] for `towereye <args>` in either mode
+  return PACKAGED ? [CORE, args] : [PYTHON, ["-u", "-m", "towereye", ...args]];
+}
+function coreOk() { return fs.existsSync(PACKAGED ? CORE : PYTHON); }
+function coreEnv() {
+  return { ...process.env, PYTHONUNBUFFERED: "1", TOWEREYE_DATA: DATA };
+}
 
 let win = null;
 let logOffset = 0;
@@ -71,13 +84,31 @@ let starting = false;
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 460,
-    height: 760,
-    minWidth: 380,
+    width: 540,
+    height: 820,
+    minWidth: 440,
     title: "towereye",
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true },
   });
-  win.loadFile("index.html");
+  win.loadFile("index.html", process.env.TOWEREYE_STEP ? { query: { step: process.env.TOWEREYE_STEP } } : undefined);
+  // TOWEREYE_SCREENSHOT=<png path>: capture the window a few seconds after load, then quit (dev aid)
+  if (process.env.TOWEREYE_SCREENSHOT) {
+    win.webContents.once("did-finish-load", () => setTimeout(async () => {
+      win.webContents.invalidate();            // an untouched first paint can be captured half-drawn
+      await new Promise((r) => setTimeout(r, 400));
+      const img = await win.capturePage();
+      fs.writeFileSync(process.env.TOWEREYE_SCREENSHOT, img.toPNG());
+      if (process.env.TOWEREYE_DUMP) {
+        const info = await win.webContents.executeJavaScript(`(() => {
+          const r = (id) => { const e = document.getElementById(id); if (!e) return null; const b = e.getBoundingClientRect(); return { hidden: e.hidden, x: b.x, y: b.y, w: b.width, h: b.height, display: getComputedStyle(e).display }; };
+          const at = (x, y) => { const e = document.elementFromPoint(x, y); return e ? (e.id || e.className || e.tagName) : null; };
+          return { scroll: document.documentElement.scrollHeight, inner: innerHeight, scan: r("scan"), chosen: r("chosen"), cams: r("cams"), feedWrap: r("feedWrap"), details: r("dotWatch"), at250: at(100, 250), at400: at(100, 400), err: window.__err || null };
+        })()`);
+        fs.writeFileSync(process.env.TOWEREYE_DUMP, JSON.stringify(info, null, 1));
+      }
+      app.quit();
+    }, Number(process.env.TOWEREYE_SCREENSHOT_DELAY || 4000)));
+  }
 }
 
 // log pane: tail the watch log file (works for a watch started before this window)
@@ -96,21 +127,33 @@ function tailLog() {
   } catch { /* no log yet */ }
 }
 
-ipcMain.handle("env", () => ({ repo: REPO, pythonOk: fs.existsSync(PYTHON), running: watchPids().length > 0 }));
+ipcMain.handle("env", () => ({
+  data: DATA, core: PACKAGED ? CORE : PYTHON, coreOk: coreOk(), packaged: PACKAGED,
+  running: watchPids().length > 0,
+}));
 
 ipcMain.handle("cameras", async () => {
   if (watchPids().length) return { error: "stop the watch before scanning: it owns the camera" };
   return new Promise((resolve) => {
-    const p = spawn(PYTHON, ["-m", "towereye", "cameras", "--json"], { cwd: REPO });
-    let out = "";
+    const [file, argv] = coreCommand(["cameras", "--json"]);
+    const p = spawn(file, argv, { cwd: DATA, env: coreEnv() });
+    let out = "", err = "";
     p.stdout.on("data", (d) => { out += d; });
-    p.on("close", () => {
-      try { resolve({ cameras: JSON.parse(out) }); }
-      catch { resolve({ error: "camera scan failed", raw: out }); }
+    p.stderr.on("data", (d) => { err += d; });
+    p.on("close", (code) => {
+      // stderr carries OpenCV's per-index noise; keep only the last real line
+      const reason = err.split("\n").map((l) => l.trim()).filter((l) => l && !/^OpenCV|^\[/.test(l)).pop();
+      let parsed = null;
+      try { parsed = JSON.parse(out); } catch { /* not json */ }
+      if (Array.isArray(parsed)) return resolve({ cameras: parsed });
+      if (parsed && parsed.error) return resolve({ error: parsed.error });
+      resolve({ error: `camera scan failed (exit ${code})${reason ? ": " + reason : ""}` });
     });
     p.on("error", (e) => resolve({ error: String(e) }));
   });
 });
+
+ipcMain.handle("openObs", () => { openObs(); return true; });
 
 function openObs() {
   // `open -a` activates OBS if it is already running; the flag only applies
@@ -120,14 +163,16 @@ function openObs() {
   send("log", "opened OBS with the virtual camera started");
 }
 
-ipcMain.handle("start", async (_e, { camera, obs }) => {
+const DICE = new Set(["auto", "d4", "d6", "d8", "d10", "d12", "d20"]);
+
+ipcMain.handle("start", async (_e, { camera, obs, die }) => {
   if (starting) return { ok: false, error: "already starting" };
   starting = true;
   send("state", { running: true, starting: true });
   try {
     if (await stopWatch()) send("log", "replaced the running watch");
     if (obs) openObs();
-    return startWatch(camera);
+    return startWatch(camera, DICE.has(die) ? die : "auto");
   } finally {
     // hold Start until the ports are bound (or 15s), so a double click can't
     // launch a duplicate that loses the camera race
@@ -137,15 +182,17 @@ ipcMain.handle("start", async (_e, { camera, obs }) => {
   }
 });
 
-function startWatch(camera) {
+function startWatch(camera, die) {
+  fs.mkdirSync(DATA, { recursive: true });
   fs.writeFileSync(LOG, "");
   logOffset = 0;
   const out = fs.openSync(LOG, "a");
-  const child = spawn(PYTHON, ["-u", "-m", "towereye", "watch", "--camera", String(camera)], {
-    cwd: REPO,
+  const [file, argv] = coreCommand(["watch", "--camera", String(camera), "--die", die]);
+  const child = spawn(file, argv, {
+    cwd: DATA,
     detached: true,               // survives this app closing
     stdio: ["ignore", out, out],
-    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    env: coreEnv(),
   });
   child.unref();
   fs.closeSync(out);

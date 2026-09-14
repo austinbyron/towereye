@@ -1,6 +1,6 @@
 """Reader protocol, value parsing, and the cheapest-first reader chain."""
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 import numpy as np
 
@@ -36,16 +36,24 @@ CROP_SCALES = (0.75, 0.85, 0.68)
 
 class ReaderChain:
     def __init__(self, readers: list[Reader], min_confidence: float = 0.5,
-                 crop_scales: tuple[float, ...] = CROP_SCALES):
+                 crop_scales: tuple[float, ...] = CROP_SCALES,
+                 faces: Callable[[], int | None] = lambda: None):
         self.readers = readers
         self.min_confidence = min_confidence
         self.crop_scales = crop_scales
+        # face count of the selected die (None = auto); a reading above it is
+        # impossible (a d8 never shows 17), so it is dropped like a weak guess
+        self.faces = faces
 
     def _read_crop(self, crop: np.ndarray) -> Reading | None:
+        faces = self.faces()
         for reader in self.readers:
             reading = reader.read(crop)
-            if reading is not None and reading.confidence >= self.min_confidence:
-                return reading
+            if reading is None or reading.confidence < self.min_confidence:
+                continue
+            if faces is not None and reading.value > faces:
+                continue
+            return reading
         return None
 
     def read(self, frame: np.ndarray) -> Reading | None:

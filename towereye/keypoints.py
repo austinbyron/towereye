@@ -63,21 +63,38 @@ _DISC = np.hypot(_xx - SIZE / 2, _yy - SIZE / 2) <= DISC_FRAC * SIZE
 class KeypointReader:
     name = "keypoints"
 
-    def __init__(self, template_dir: str | Path = "templates"):
+    def __init__(self, template_dir: str | Path = "templates", die: str = "auto"):
         self._sift = cv2.SIFT_create()
         self._bf = cv2.BFMatcher()
-        self.templates: list[tuple[int, list, np.ndarray, np.ndarray]] = []
+        self.die = die  # 'auto' = every pool competes; 'd8' = only that pool
+        self.templates: list[tuple[int, list, np.ndarray, np.ndarray, str | None]] = []
         # templates/<die>/<value>_<n>.png; every die's pool loads together so
         # the value falls out of whichever die's lettering matches (a d8's
-        # underlined 6 is its own template, not a d20 6 look-alike)
-        for path in sorted(Path(template_dir).rglob("*.png")):
+        # underlined 6 is its own template, not a d20 6 look-alike). Templates
+        # at the root belong to no die and are always in the running.
+        root = Path(template_dir)
+        for path in sorted(root.rglob("*.png")):
             value = parse_golden_name(path)
             img = cv2.imread(str(path))
             if value is None or img is None:
                 continue
             kp, des, mask = self._features(img)
             if des is not None and len(kp) >= 4:
-                self.templates.append((value, kp, des, mask))
+                pool = path.parent.name if path.parent != root else None
+                self.templates.append((value, kp, des, mask, pool))
+
+    def add_template(self, img: np.ndarray, value: int, die: str | None) -> bool:
+        """Grow the pool from a freshly saved template crop (calibration)."""
+        kp, des, mask = self._features(img)
+        if des is None or len(kp) < 4:
+            return False
+        self.templates.append((value, kp, des, mask, die))
+        return True
+
+    def _pool(self) -> list:
+        if self.die == "auto":
+            return self.templates
+        return [t for t in self.templates if t[4] is None or t[4] == self.die]
 
     def _features(self, img: np.ndarray):
         img = cv2.resize(img, (SIZE, SIZE), interpolation=cv2.INTER_CUBIC)
@@ -125,13 +142,14 @@ class KeypointReader:
         return float((q & t).sum() / union) if union else 0.0
 
     def read(self, frame: np.ndarray) -> Reading | None:
-        if not self.templates:
+        pool = self._pool()
+        if not pool:
             return None
         kp, des, qmask = self._features(frame)
         if des is None or len(kp) < 4:
             return None
         best: dict[int, tuple[set[int], float]] = {}
-        for value, tkp, tdes, tmask in self.templates:
+        for value, tkp, tdes, tmask, _die in pool:
             found, affine = self._match(kp, des, tkp, tdes)
             if len(found) > len(best.setdefault(value, (set(), 0.0))[0]):
                 best[value] = (found, self._shape_agreement(qmask, tmask, affine))

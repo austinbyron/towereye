@@ -10,6 +10,8 @@ import cv2
 import numpy as np
 
 from .datalog import RollLogger
+from . import paths
+from .dice import AUTO, FACES, DieSelection, normalize
 from .frames import CameraSource, VideoFileSource
 from .presence import die_present
 from .readers import ReaderChain
@@ -73,19 +75,29 @@ def _fan_out(hub, logger) -> Callable[[dict], None]:
     return emit
 
 
-def _harvest_on_confirm(logger, template_dir="templates/d20", max_per_face=6):
+def _harvest_on_confirm(logger, template_dir="templates/d20", max_per_face=6,
+                        die: Callable[[], str] | None = None):
+    """Confirmed rolls become templates. With `die`, template_dir is the pool
+    ROOT and the frame lands in <root>/<die>/ (auto -> d20)."""
     from .keypoints import save_template
+
+    def pool_dir() -> Path:
+        if die is None:
+            return Path(template_dir)
+        current = die()
+        return Path(template_dir) / (current if current != AUTO else "d20")
 
     def on_confirm(roll_id: str, value: int) -> None:
         logger.confirm(roll_id, value)
         path = logger.frame_path(roll_id)
         if not path.exists():
             return
-        if len(list(Path(template_dir).glob(f"{value}_*.png"))) >= max_per_face:
+        pool = pool_dir()
+        if len(list(pool.glob(f"{value}_*.png"))) >= max_per_face:
             return
         frame = cv2.imread(str(path))
         if frame is not None:
-            save_template(frame, value, template_dir)
+            save_template(frame, value, pool)
 
     return on_confirm
 
@@ -97,9 +109,16 @@ def run_watch(
     logger,
     emit: Callable[[dict], None],
     presence: Callable[[np.ndarray], bool] = _watch_gate,
+    die: Callable[[], str] = lambda: AUTO,
+    paused: Callable[[], bool] = lambda: False,
 ) -> None:
     last_read: tuple[float, float, float] | None = None  # blob of the last reported die
     for frame in frames:
+        if paused():
+            # calibrating: dice are being placed by hand, none of it is a roll
+            detector.reset()
+            last_read = None
+            continue
         result = detector.feed(frame)
         if result.state == SettleState.SETTLED:
             if not presence(result.frame):
@@ -134,7 +153,8 @@ def run_watch(
                     break
                 settled = max(extra, key=sharpness)
                 reading = chain.read(settled)
-            roll_id = logger.log(settled, reading)
+            current_die = die()
+            roll_id = logger.log(settled, reading, context=current_die)
             if reading is not None:
                 emit({
                     "type": "result",
@@ -142,6 +162,7 @@ def run_watch(
                     "value": reading.value,
                     "confidence": reading.confidence,
                     "reader": reading.reader,
+                    "die": current_die,
                 })
             else:
                 emit({"type": "unread", "roll_id": roll_id})
@@ -153,18 +174,29 @@ def run_watch(
             detector.reset()
 
 
-def _build_chain() -> ReaderChain:
+def _build_chain(selection: DieSelection | None = None) -> ReaderChain:
     readers = []
     from .keypoints import KeypointReader
 
-    keypoints = KeypointReader()
+    selection = selection or DieSelection()
+    keypoints = KeypointReader(paths.templates_dir())
     if keypoints.templates:
         readers.append(keypoints)
     if sys.platform == "darwin":
         from .readers.apple_vision import AppleVisionReader
 
         readers.append(AppleVisionReader())
-    return ReaderChain(readers)
+    chain = ReaderChain(readers, faces=lambda: selection.faces)
+
+    def on_set_die(die: str) -> None:
+        # keypoints' pool follows the selection; the chain's face gate reads it live
+        selection.set(die)
+        keypoints.die = selection.die
+
+    keypoints.die = selection.die
+    chain.set_die = on_set_die
+    chain.keypoints = keypoints
+    return chain
 
 
 def _source_from_args(args):
@@ -207,16 +239,15 @@ def _preview_frames(frames: Iterator[np.ndarray]) -> Iterator[np.ndarray]:
         cv2.destroyAllWindows()
 
 
-PID_FILE = Path(".towereye-watch.pid")
-
-
 def cmd_watch(args) -> int:
-    PID_FILE.write_text(str(os.getpid()))
+    pid_file = paths.pid_file()
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(str(os.getpid()))
     try:
         return _cmd_watch(args)
     finally:
-        if PID_FILE.exists() and PID_FILE.read_text().strip() == str(os.getpid()):
-            PID_FILE.unlink()
+        if pid_file.exists() and pid_file.read_text().strip() == str(os.getpid()):
+            pid_file.unlink()
 
 
 def _cmd_watch(args) -> int:
@@ -224,15 +255,23 @@ def _cmd_watch(args) -> int:
 
     if not args.video and not ensure_camera_access():
         return 3
-    chain = _build_chain()
+    from .calibrate import Calibrator, LatestFrame
+
+    selection = DieSelection(args.die)
+    chain = _build_chain(selection)
     logger = RollLogger(args.log_dir)
+    latest = LatestFrame()
+    calibrator = Calibrator(paths.templates_dir(), keypoints=chain.keypoints, latest=lambda: latest.frame)
     hub = None
     if not args.no_hub:
         from .hub import Hub
 
         try:
             hub = Hub(port=args.hub_port)
-            hub.on_confirm = _harvest_on_confirm(logger)
+            hub.die = selection.die
+            hub.on_set_die = chain.set_die
+            hub.on_confirm = _harvest_on_confirm(logger, paths.templates_dir(), die=lambda: selection.die)
+            hub.on_request = calibrator.handle
             hub.start_in_thread()
             print(f"Hub listening on ws://127.0.0.1:{hub.port}")
         except Exception as exc:
@@ -252,14 +291,15 @@ def _cmd_watch(args) -> int:
         except OSError as exc:
             print(f"Stream unavailable ({exc}); continuing without it")
             stream = None
-    print(f"Watching for rolls (log dir: {args.log_dir}). Ctrl-C to stop.")
-    frames = _zoom_frames(_source_from_args(args).frames(), args.zoom)
+    print(f"Watching for rolls (die: {selection.die}, log dir: {args.log_dir}). Ctrl-C to stop.")
+    frames = latest.tee(_zoom_frames(_source_from_args(args).frames(), args.zoom))
     if stream is not None:
         frames = _published_frames(frames, stream.publisher)
     if args.preview:
         frames = _preview_frames(frames)
     try:
-        run_watch(frames, SettleDetector(), chain, logger, _fan_out(hub, logger))
+        run_watch(frames, SettleDetector(), chain, logger, _fan_out(hub, logger),
+                  die=lambda: selection.die, paused=lambda: calibrator.active)
     except KeyboardInterrupt:
         pass
     finally:
@@ -387,9 +427,26 @@ def probe_cameras(max_index: int = 6, warmup_seconds: float = 0.6, opener=cv2.Vi
     return found
 
 
+CAMERA_DENIED = ("camera access denied - allow towereye under System Settings > "
+                 "Privacy & Security > Camera, then scan again")
+
+
 def cmd_cameras(args) -> int:
     import json
 
+    from .camera_access import ensure_camera_access
+
+    # ask macOS first: a brand-new app gets no prompt from OpenCV alone, just
+    # silent failures on every index
+    def to_stderr(msg):
+        print(msg, file=sys.stderr)
+
+    if not ensure_camera_access(log=to_stderr):
+        if args.json:
+            print(json.dumps({"error": CAMERA_DENIED}))
+        else:
+            print(CAMERA_DENIED)
+        return 3
     cameras = probe_cameras(args.max_index)
     if args.json:
         print(json.dumps(cameras))
@@ -428,21 +485,29 @@ def _load_dotenv(path: Path = Path(".env")) -> None:
             os.environ.setdefault(key.strip(), value.strip())
 
 
-def main(argv=None) -> int:
-    _load_dotenv()
+def _die_arg(text: str) -> str:
+    die = normalize(text)
+    if die is None:
+        raise argparse.ArgumentTypeError(f"unknown die {text!r}; use auto or one of {', '.join(FACES)}")
+    return die
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="towereye")
     sub = parser.add_subparsers(dest="command", required=True)
 
     watch = sub.add_parser("watch", help="watch the tray and read rolls")
     watch.add_argument("--camera", default="0", help="device index or stream URL")
     watch.add_argument("--video", help="video file instead of a live camera")
-    watch.add_argument("--log-dir", default="dataset", help="roll dataset directory")
+    watch.add_argument("--log-dir", default=str(paths.dataset_dir()), help="roll dataset directory")
     watch.add_argument("--zoom", type=float, default=1.0, help="digital zoom factor (center crop, 1.0 = full field)")
     watch.add_argument("--preview", action="store_true", help="show the live feed in a window")
     watch.add_argument("--hub-port", type=int, default=8777, help="WebSocket hub port")
     watch.add_argument("--no-hub", action="store_true", help="disable the WebSocket hub")
     watch.add_argument("--stream-port", type=int, default=8778, help="MJPEG camera stream port (for the OBS overlay)")
     watch.add_argument("--no-stream", action="store_true", help="disable the camera stream")
+    watch.add_argument("--die", type=_die_arg, default=AUTO,
+                       help="die on the tray (d4..d20) or auto; changeable live from the app/extension")
     watch.set_defaults(func=cmd_watch)
 
     read = sub.add_parser("read", help="read a die from a still image")
@@ -469,10 +534,14 @@ def main(argv=None) -> int:
     calibrate.add_argument("--camera", default="0", help="device index or stream URL")
     calibrate.add_argument("--video", help=argparse.SUPPRESS)
     calibrate.add_argument("--zoom", type=float, default=1.5, help="digital zoom factor (center crop, 1.0 = full field)")
-    calibrate.add_argument("--out-dir", default="templates", help="template root; die pools live in <out-dir>/<die>/")
+    calibrate.add_argument("--out-dir", default=str(paths.templates_dir()), help="template root; die pools live in <out-dir>/<die>/")
     calibrate.add_argument("--die", default="d20", help="which die: d20, d8, d12 ... sets the face count and pool")
     calibrate.add_argument("--start", type=int, default=1, help="face value to start from")
     calibrate.set_defaults(func=cmd_calibrate)
+    return parser
 
-    args = parser.parse_args(argv)
+
+def main(argv=None) -> int:
+    _load_dotenv()
+    args = _parser().parse_args(argv)
     return args.func(args)

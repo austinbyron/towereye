@@ -45,3 +45,16 @@ def test_server_serves_latest_frame_and_mjpeg_boundary():
             assert head.startswith(b"--towereyeframe")
     finally:
         server.stop()
+
+
+def test_server_serves_the_overlay_page():
+    server = StreamServer(FramePublisher(), port=0)
+    server.start_in_thread()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{server.port}/overlay", timeout=2) as r:
+            assert r.status == 200
+            assert r.headers["Content-Type"].startswith("text/html")
+            body = r.read().decode()
+        assert "towereye" in body and "8777" in body  # the hub port default lives in the page
+    finally:
+        server.stop()

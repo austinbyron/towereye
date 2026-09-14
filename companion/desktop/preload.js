@@ -3,8 +3,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("towereye", {
   env: () => ipcRenderer.invoke("env"),
   cameras: () => ipcRenderer.invoke("cameras"),
-  start: (camera, obs) => ipcRenderer.invoke("start", { camera, obs }),
+  start: (camera, obs, die) => ipcRenderer.invoke("start", { camera, obs, die }),
   stop: () => ipcRenderer.invoke("stop"),
+  openObs: () => ipcRenderer.invoke("openObs"),
   onLog: (fn) => ipcRenderer.on("log", (_e, line) => fn(line)),
   onState: (fn) => ipcRenderer.on("state", (_e, s) => fn(s)),
 });

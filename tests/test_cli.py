@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import pytest
 
 from towereye.cli import _load_dotenv, _zoom_frames, run_watch
 from towereye.readers import Reading
@@ -20,9 +21,11 @@ class FixedReader:
 class ListLogger:
     def __init__(self):
         self.entries = []
+        self.contexts = []
 
     def log(self, frame, reading, context=None):
         self.entries.append(reading)
+        self.contexts.append(context)
         return "test-id"
 
 
@@ -363,3 +366,97 @@ def test_probe_cameras_returns_thumbnails_for_openable_indices():
     cams = probe_cameras(max_index=3, warmup_seconds=0.01, opener=lambda i: Cap(i != 1))
     assert [c["index"] for c in cams] == [0, 2]
     assert cams[0]["width"] == 1280 and cams[0]["thumbnail"].startswith("data:image/jpeg;base64,")
+
+
+def test_run_watch_stamps_result_events_with_the_current_die():
+    events = []
+    logger = ListLogger()
+    run_watch(
+        frames=iter(_throw_frames()),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=logger,
+        emit=events.append,
+        die=lambda: "d8",
+    )
+    results = [e for e in events if e["type"] == "result"]
+    assert results[0]["die"] == "d8"
+    assert logger.contexts == ["d8"]
+
+
+def test_harvest_pool_follows_the_selected_die(tmp_path):
+    from towereye.cli import _harvest_on_confirm
+    from towereye.datalog import RollLogger
+
+    logger = RollLogger(tmp_path / "dataset")
+    frame = np.zeros((300, 300, 3), dtype=np.uint8)
+    frame[110:190, 110:190] = (255, 120, 100)
+    logger.log(frame, None)
+    roll_id = __import__("json").loads(
+        (tmp_path / "dataset" / "rolls.jsonl").read_text().splitlines()[0]
+    )["id"]
+    die = ["auto"]
+    on_confirm = _harvest_on_confirm(logger, template_dir=tmp_path / "templates", die=lambda: die[0])
+    on_confirm(roll_id, 6)
+    assert (tmp_path / "templates" / "d20" / "6_000.png").exists()  # auto harvests into the d20 pool
+    die[0] = "d8"
+    on_confirm(roll_id, 6)
+    assert (tmp_path / "templates" / "d8" / "6_000.png").exists()
+
+
+def test_watch_parser_accepts_a_die_flag():
+    from towereye.cli import _parser
+
+    assert _parser().parse_args(["watch", "--die", "D8"]).die == "d8"
+    assert _parser().parse_args(["watch"]).die == "auto"
+    with pytest.raises(SystemExit):
+        _parser().parse_args(["watch", "--die", "d7"])
+
+
+def test_run_watch_reports_nothing_while_paused():
+    events = []
+    paused = [True]
+    frames = list(_throw_frames()) + list(_throw_frames())
+    n = len(frames) // 2
+
+    def gen():
+        for i, f in enumerate(frames):
+            if i == n:
+                paused[0] = False  # calibration ends halfway: second throw must report
+            yield f
+
+    run_watch(
+        frames=gen(),
+        detector=SettleDetector(settle_frames=3, timeout_frames=100),
+        chain=FixedReader(7),
+        logger=ListLogger(),
+        emit=events.append,
+        paused=lambda: paused[0],
+    )
+    assert [e["type"] for e in events if e["type"] == "result"] == ["result"]
+
+
+def test_cameras_json_reports_denied_access(monkeypatch, capsys):
+    import json
+
+    from towereye import cli
+
+    monkeypatch.setattr("towereye.camera_access.ensure_camera_access", lambda log=print: False)
+    monkeypatch.setattr(cli, "probe_cameras", lambda n: (_ for _ in ()).throw(AssertionError("must not probe")))
+    rc = cli.main(["cameras", "--json"])
+    assert rc == 3
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert "denied" in out["error"]
+
+
+def test_cameras_json_is_clean_when_allowed(monkeypatch, capsys):
+    import json
+
+    from towereye import cli
+
+    monkeypatch.setattr("towereye.camera_access.ensure_camera_access", lambda log=print: (log("granted"), True)[1])
+    monkeypatch.setattr(cli, "probe_cameras", lambda n: [{"index": 0, "width": 1, "height": 1}])
+    assert cli.main(["cameras", "--json"]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == [{"index": 0, "width": 1, "height": 1}]  # stdout is pure JSON
+    assert "granted" in captured.err

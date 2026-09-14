@@ -7,6 +7,8 @@ from collections import deque
 
 import websockets
 
+from .dice import AUTO, normalize
+
 HISTORY_SIZE = 50  # events replayed to a client that connects mid-session
 
 
@@ -15,6 +17,9 @@ class Hub:
         self.port = port
         self.on_arm = None
         self.on_confirm = None
+        self.on_set_die = None
+        self.on_request = None  # other request kinds (calibration, templates): reply dict is broadcast
+        self.die = AUTO  # current die name; every client learns it on join and on change
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set = set()
         self._history: deque = deque(maxlen=HISTORY_SIZE)
@@ -52,6 +57,7 @@ class Hub:
         try:
             if self._history:
                 await ws.send(json.dumps({"type": "history", "events": list(self._history)}))
+            await ws.send(json.dumps({"type": "die", "die": self.die}))
             async for raw in ws:
                 try:
                     msg = json.loads(raw)
@@ -71,12 +77,30 @@ class Hub:
                         "label": msg.get("label"),
                         "die": msg.get("die"),
                     })
+                elif kind == "set_die":
+                    die = normalize(msg.get("die"))
+                    if die is None:
+                        continue
+                    self.die = die
+                    if self.on_set_die is not None:
+                        try:
+                            self.on_set_die(die)
+                        except Exception:
+                            pass
+                    await self._send_all({"type": "die", "die": die})
                 elif kind == "confirm":
                     if self.on_confirm is not None and "roll_id" in msg and "value" in msg:
                         try:
                             self.on_confirm(msg["roll_id"], int(msg["value"]))
                         except Exception:
                             pass
+                elif self.on_request is not None:
+                    try:
+                        reply = self.on_request(msg)
+                    except Exception as exc:
+                        reply = {"type": "error", "request": kind, "reason": str(exc)}
+                    if isinstance(reply, dict):
+                        await self._send_all(reply)
         finally:
             self._clients.discard(ws)
 
