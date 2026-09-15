@@ -84,9 +84,10 @@ app or the extension's toolbar popup (hub message `set_die`; the hub answers
 every client with `{"type": "die", "die": "d8"}` and stamps `die` on each
 `result`).
 
-**4. Send rolls to Roll20.** Open `chrome://extensions`, turn on Developer
-mode, choose Load unpacked, and pick `companion/extension/`. Open (or reload)
-your Roll20 game tab. Each roll now appears in chat as a roll card named after
+**4. Send rolls to Roll20.** Install [towereye companion](https://chromewebstore.google.com/detail/towereye-companion/kfempdjjpchapfpdkngogidooicekhgm)
+from the Chrome Web Store (or, for development, open `chrome://extensions`, turn
+on Developer mode, choose Load unpacked, and pick `companion/extension/`). Open
+(or reload) your Roll20 game tab. Each roll now appears in chat as a roll card named after
 the selected die. Click the extension's toolbar icon to pick the die.
 `companion/extension/pack.sh` zips it for the Chrome Web Store.
 
