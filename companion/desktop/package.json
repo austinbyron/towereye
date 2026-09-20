@@ -1,14 +1,15 @@
 {
   "name": "towereye-desktop",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Start/stop the towereye watch, pick the tray camera by sight, see the live feed and last roll",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
+    "test": "node --test updater.test.js scripts/*.test.js",
     "core": "cd ../.. && .venv/bin/pyinstaller --noconfirm --distpath packaging/dist --workpath packaging/build packaging/towereye.spec",
     "dist": "npm run core && electron-builder --mac",
-    "release": "npm run core && electron-builder --mac --publish always"
+    "release": "npm run core && electron-builder --mac --publish always && node scripts/merge-manifest.js v$npm_package_version $(node -p process.arch)"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
@@ -28,6 +29,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "updater.js",
       "index.html",
       "package.json"
     ],
@@ -62,5 +64,8 @@
       "repo": "towereye",
       "releaseType": "draft"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

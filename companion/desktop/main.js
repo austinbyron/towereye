@@ -6,6 +6,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const { spawn, execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { initUpdater } = require("./updater");
 
 // Packaged: the frozen CLI (PyInstaller, see packaging/towereye.spec) ships in
 // Resources/towereye-core and data lives in ~/Library/Application Support.
@@ -207,6 +208,15 @@ ipcMain.handle("stop", async () => {
 
 app.whenReady().then(() => {
   createWindow();
+  if (app.isPackaged) {
+    initUpdater({
+      app, ipcMain, autoUpdater: require("electron-updater").autoUpdater, send,
+      watchRunning: () => watchPids().length > 0, stopWatch,
+    });
+  } else {
+    ipcMain.handle("updateState", () => ({ ready: false, version: null }));
+    ipcMain.handle("updateInstall", () => ({ ok: false }));
+  }
   setInterval(() => {
     tailLog();
     if (!starting) send("state", { running: watchPids().length > 0, starting: false });

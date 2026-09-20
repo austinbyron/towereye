@@ -60,6 +60,8 @@ jobs:
         run: |
           npm ci
           npx electron-builder --mac --${{ matrix.arch }} --publish always
+          # each arch uploads its own latest-mac.yml; merge them so both can auto-update
+          node scripts/merge-manifest.js "${GITHUB_REF_NAME}" ${{ matrix.arch }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

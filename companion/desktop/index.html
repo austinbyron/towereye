@@ -10,6 +10,7 @@
   h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
   p.lead { color: #aab6c6; margin-bottom: 14px; }
   .muted { color: #8b97a8; font-size: 12px; }
+  #update { margin-left: auto; padding: 5px 12px; border-radius: 999px; font-size: 12px; background: #1f5c3a; color: #d9ffe8; }
   button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 9px; border: 0; cursor: pointer; background: #2a3441; color: #e6ebf2; }
   button.primary { background: #3ddc84; color: #0b1a10; }
   button.danger { background: #e0574f; color: #fff; }
@@ -91,7 +92,7 @@
 </style>
 </head>
 <body>
-<h1>🎲 towereye <span class="muted" id="envNote"></span></h1>
+<h1>🎲 towereye <span class="muted" id="envNote"></span><button id="update" hidden></button></h1>
 
 <div class="steps">
   <div class="step" data-step="camera"><span class="n">1</span> Camera</div>
@@ -561,6 +562,14 @@
   // ---- boot ----
   window.towereye.onLog(log);
   window.towereye.onState((s) => setRunning(s.running, s.starting));
+  const showUpdate = (u) => {
+    if (!u || !u.ready) return;
+    $("update").textContent = `Update ${u.version} ready · Restart`;
+    $("update").hidden = false;
+  };
+  $("update").onclick = () => { $("update").disabled = true; $("update").textContent = "Installing…"; window.towereye.updateInstall(); };
+  window.towereye.onUpdate(showUpdate);
+  window.towereye.updateState().then(showUpdate);
   window.towereye.env().then((env) => {
     if (!env.coreOk) { $("envNote").textContent = `towereye core not found: ${env.core}`; $("start").disabled = true; }
     else if (!env.packaged) $("envNote").textContent = "dev";

@@ -44,6 +44,31 @@ and the workflow refuses a mismatch (electron-builder files assets under
 the package version, not the tag). The mac target lists no arch: the CLI
 flag picks it, so each CI job builds exactly its own architecture.
 
+## Auto-update
+
+The packaged app (`updater.js`, electron-updater) checks GitHub Releases a few
+seconds after launch, downloads a newer version in the background and shows an
+"Update x.y.z ready · Restart" chip in the header. No dialogs; an ignored
+update installs the next time the app quits. The watch runs from inside the
+bundle, so it is stopped before any install swaps the bundle (Restart stops it;
+install-on-quit is only staged when no watch was running). Only PUBLISHED
+releases are seen, drafts are not. 0.4.1 and older have no updater: install
+0.4.2+ by hand once.
+
+electron-updater reads one `latest-mac.yml` per release, but each arch is a
+separate build that uploads a manifest with only its own files.
+`scripts/merge-manifest.js <tag> [arch]` keeps each build's manifest as
+`latest-mac-<arch>.yml` on the release and merges them into `latest-mac.yml`.
+CI and `npm run release` both run it; rerun it without an arch any time
+(`node scripts/merge-manifest.js v0.4.2`). Before publishing a draft, check
+that `latest-mac.yml` lists both `towereye-mac-arm64.zip` and
+`towereye-mac-x64.zip`.
+
+Test without publishing: build two versions (`-c.mac.notarize=false` is fine,
+signing is required), install the older one, serve the newer one's `dist/`
+with `python3 -m http.server 8790`, and launch the installed app with
+`TOWEREYE_UPDATE_URL=http://127.0.0.1:8790/`. Unit tests: `npm test`.
+
 Dev shortcut (no signing): `npm start` runs the window against the repo's
 `.venv` python with data in the repo dir. `TOWEREYE_REPO=<path>` makes even
 the packaged app use a checkout instead of the bundled core.
